@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   type FormEvent,
+  useCallback,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -604,8 +605,6 @@ export default function CheckoutClient({
     isCreditSale,
     loyaltyPointsToRedeem,
     paymentInputs,
-    paymentSummary,
-    payments.length,
     selectedCustomer,
     selectedCustomerId,
     total,
@@ -686,20 +685,20 @@ export default function CheckoutClient({
     return () => window.clearInterval(timer);
   }, []);
 
-  function focusScanInput(selectText = false) {
+  const focusScanInput = useCallback((selectText = false) => {
     const input = scanInputRef.current;
     if (!input) return;
     input.focus();
     if (selectText) input.select();
-  }
+  }, []);
 
   useEffect(() => {
     focusScanInput();
-  }, []);
+  }, [focusScanInput]);
 
-  function resetPayments() {
+  const resetPayments = useCallback(() => {
     setPayments(buildInitialPaymentLines(defaultPaymentMethods, canAcceptCash));
-  }
+  }, [canAcceptCash, defaultPaymentMethods]);
   const clearCartState = () => {
     setCart([]);
     setSelectedCustomerId(null);
@@ -1301,6 +1300,95 @@ export default function CheckoutClient({
     };
   }, []);
 
+  const resumeParkedSale = useCallback(
+    async (
+      parkedSale: ParkedSale,
+      options?: {
+        skipReplaceConfirm?: boolean;
+        clearSearchParamAfter?: boolean;
+      },
+    ) => {
+      setError("");
+      setParkedFeedback("");
+      const missingOption = parkedSale.items.find(
+        (item) => !productMap.has(item.productVariantId ?? item.productId),
+      );
+      if (missingOption) {
+        setError(
+          "One or more items in this saved checkout entry are no longer available in the active catalog.",
+        );
+        return false;
+      }
+      if (
+        cart.length &&
+        !options?.skipReplaceConfirm &&
+        !window.confirm(
+          "Load this saved checkout entry and replace the current checkout cart?",
+        )
+      )
+        return false;
+      setResumeLoadingId(parkedSale.id);
+      try {
+        const response = await fetch(
+          `/api/parked-sales/${parkedSale.id}/resume`,
+          { method: "POST" },
+        );
+        const data = await response
+          .json()
+          .catch(() => ({ error: "Unable to load the saved checkout entry." }));
+        setResumeLoadingId(null);
+        if (!response.ok) {
+          setError(data?.error ?? "Unable to load the saved checkout entry.");
+          return false;
+        }
+        setCart(
+          parkedSale.items.map((item) => {
+            const option = productMap.get(
+              item.productVariantId ?? item.productId,
+            )!;
+            return { ...option, qty: item.qty };
+          }),
+        );
+        setSelectedCustomerId(parkedSale.customerId ?? null);
+        setCustomerSearch(
+          parkedSale.customerId
+            ? getCustomerDisplayName(
+                customers.find(
+                  (customer) => customer.id === parkedSale.customerId,
+                ) ?? {},
+              )
+            : (parkedSale.customerName ?? ""),
+        );
+        setCustomerName(parkedSale.customerName ?? "");
+        setCustomerPhone(parkedSale.customerPhone ?? "");
+        setLoyaltyPointsToRedeem("0");
+        setIsCreditSale(false);
+        setCreditDueDate(toDateInputValue());
+        setNotes(parkedSale.notes ?? "");
+        setDiscountAmount(parkedSale.discountAmount);
+        setScanQuery("");
+        setScanFeedback(null);
+        resetPayments();
+        setParkedSales((current) =>
+          current.filter((entry) => entry.id !== parkedSale.id),
+        );
+        setParkedFeedback(
+          `Loaded ${parkedSale.type === "QUOTE" ? "quote" : "saved cart"} from ${parkedSale.cashierName}.`,
+        );
+        focusScanInput();
+        if (options?.clearSearchParamAfter) {
+          router.replace("/checkout");
+        }
+        return true;
+      } catch {
+        setResumeLoadingId(null);
+        setError("Unable to load the saved checkout entry.");
+        return false;
+      }
+    },
+    [cart.length, customers, focusScanInput, productMap, resetPayments, router],
+  );
+
   useEffect(() => {
     const parkedSaleId = searchParams.get("parkedSaleId");
     if (!parkedSaleId || handledSearchParamResumeRef.current === parkedSaleId) {
@@ -1322,7 +1410,7 @@ export default function CheckoutClient({
       skipReplaceConfirm: true,
       clearSearchParamAfter: true,
     });
-  }, [parkedSales, router, searchParams]);
+  }, [parkedSales, resumeParkedSale, router, searchParams]);
 
   async function saveCheckoutDraft(type: "SAVED_CART" | "QUOTE") {
     if (!cart.length) {
@@ -1379,89 +1467,6 @@ export default function CheckoutClient({
       setError("Unable to save the checkout draft.");
     } finally {
       setHolding(null);
-    }
-  }
-
-  async function resumeParkedSale(
-    parkedSale: ParkedSale,
-    options?: { skipReplaceConfirm?: boolean; clearSearchParamAfter?: boolean },
-  ) {
-    setError("");
-    setParkedFeedback("");
-    const missingOption = parkedSale.items.find(
-      (item) => !productMap.has(item.productVariantId ?? item.productId),
-    );
-    if (missingOption) {
-      setError(
-        "One or more items in this saved checkout entry are no longer available in the active catalog.",
-      );
-      return false;
-    }
-    if (
-      cart.length &&
-      !options?.skipReplaceConfirm &&
-      !window.confirm(
-        "Load this saved checkout entry and replace the current checkout cart?",
-      )
-    )
-      return false;
-    setResumeLoadingId(parkedSale.id);
-    try {
-      const response = await fetch(
-        `/api/parked-sales/${parkedSale.id}/resume`,
-        { method: "POST" },
-      );
-      const data = await response
-        .json()
-        .catch(() => ({ error: "Unable to load the saved checkout entry." }));
-      setResumeLoadingId(null);
-      if (!response.ok) {
-        setError(data?.error ?? "Unable to load the saved checkout entry.");
-        return false;
-      }
-      setCart(
-        parkedSale.items.map((item) => {
-          const option = productMap.get(
-            item.productVariantId ?? item.productId,
-          )!;
-          return { ...option, qty: item.qty };
-        }),
-      );
-      setSelectedCustomerId(parkedSale.customerId ?? null);
-      setCustomerSearch(
-        parkedSale.customerId
-          ? getCustomerDisplayName(
-              customers.find(
-                (customer) => customer.id === parkedSale.customerId,
-              ) ?? {},
-            )
-          : (parkedSale.customerName ?? ""),
-      );
-      setCustomerName(parkedSale.customerName ?? "");
-      setCustomerPhone(parkedSale.customerPhone ?? "");
-      setLoyaltyPointsToRedeem("0");
-      setIsCreditSale(false);
-      setCreditDueDate(toDateInputValue());
-      setNotes(parkedSale.notes ?? "");
-      setDiscountAmount(parkedSale.discountAmount);
-      setScanQuery("");
-      setScanFeedback(null);
-      resetPayments();
-      setParkedSales((current) =>
-        current.filter((entry) => entry.id !== parkedSale.id),
-      );
-      setParkedFeedback(
-        `Loaded ${parkedSale.type === "QUOTE" ? "quote" : "saved cart"} from ${parkedSale.cashierName}.`,
-      );
-      focusScanInput();
-      if (options?.clearSearchParamAfter) {
-        router.replace("/checkout");
-      }
-      return true;
-    } catch {
-      setResumeLoadingId(null);
-      setError("Unable to load the saved checkout entry.");
-      return false;
     }
   }
 
@@ -1701,7 +1706,7 @@ export default function CheckoutClient({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canCompleteSale, cart.length]);
+  }, [canCompleteSale, cart.length, focusScanInput]);
 
   return (
     <div className="space-y-6">
@@ -1771,7 +1776,7 @@ export default function CheckoutClient({
 
         <div className="mt-5 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
           <div
-            className={`rounded-[24px] border px-4 py-4 text-sm ${
+            className={`rounded-3xl border px-4 py-4 text-sm ${
               offlineCheckoutBlocked
                 ? "border-red-200 bg-red-50 text-red-800"
                 : !isOnline && isStockSnapshotStale
@@ -1834,7 +1839,7 @@ export default function CheckoutClient({
             {queuedSales.map((queuedSale) => (
               <div
                 key={queuedSale.id}
-                className="rounded-[24px] border border-stone-200 bg-white p-4"
+                className="rounded-3xl border border-stone-200 bg-white p-4"
               >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">
@@ -1877,7 +1882,7 @@ export default function CheckoutClient({
                     ) : null}
                   </div>
 
-                  <div className="min-w-[240px] space-y-2">
+                  <div className="min-w-60 space-y-2">
                     <Button
                       type="button"
                       variant="secondary"
@@ -1988,7 +1993,7 @@ export default function CheckoutClient({
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-stone-200 bg-stone-50/80 p-4">
+          <div className="rounded-3xl border border-stone-200 bg-stone-50/80 p-4">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,320px)_1fr]">
               <form onSubmit={handleScanSubmit} className="flex gap-3">
                 <Input
@@ -2067,7 +2072,7 @@ export default function CheckoutClient({
                   setScanFeedback(null);
                   addToCart(product);
                 }}
-                className="rounded-[24px] border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,245,244,0.92))] p-4 text-left shadow-[0_18px_36px_-30px_rgba(28,25,23,0.35)] transition hover:-translate-y-1 hover:border-emerald-300"
+                className="rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,245,244,0.92))] p-4 text-left shadow-[0_18px_36px_-30px_rgba(28,25,23,0.35)] transition hover:-translate-y-1 hover:border-emerald-300"
               >
                 <div className="flex items-start gap-3">
                   <div className="h-16 w-16 overflow-hidden rounded-[18px] border border-stone-200 bg-stone-50">
@@ -2124,7 +2129,7 @@ export default function CheckoutClient({
 
           {!filtered.length ? (
             products.length ? (
-              <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-6">
+              <div className="rounded-3xl border border-dashed border-stone-300 bg-stone-50 p-6">
                 <div className="text-sm font-semibold text-stone-900">
                   {hasSearchFilters
                     ? "No products matched that search."
@@ -2156,7 +2161,7 @@ export default function CheckoutClient({
                 </div>
               </div>
             ) : (
-              <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-6">
+              <div className="rounded-3xl border border-dashed border-stone-300 bg-stone-50 p-6">
                 <div className="text-sm font-semibold text-stone-900">
                   This branch does not have sellable products yet.
                 </div>
@@ -2213,7 +2218,7 @@ export default function CheckoutClient({
               cart.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-[24px] border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,245,244,0.9))] p-4"
+                  className="rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,245,244,0.9))] p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -2266,7 +2271,7 @@ export default function CheckoutClient({
                 </div>
               ))
             ) : (
-              <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-6">
+              <div className="rounded-3xl border border-dashed border-stone-300 bg-stone-50 p-6">
                 <div className="text-sm font-semibold text-stone-900">
                   No items in the cart yet.
                 </div>
@@ -2425,7 +2430,7 @@ export default function CheckoutClient({
                   return (
                     <div
                       key={payment.id}
-                      className="rounded-[24px] border border-stone-200 bg-white p-4"
+                      className="rounded-3xl border border-stone-200 bg-white p-4"
                     >
                       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto]">
                         <select
@@ -2700,7 +2705,7 @@ export default function CheckoutClient({
                 parkedSales.map((parkedSale) => (
                   <div
                     key={parkedSale.id}
-                    className="rounded-[24px] border border-stone-200 bg-white p-4"
+                    className="rounded-3xl border border-stone-200 bg-white p-4"
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
@@ -2748,7 +2753,7 @@ export default function CheckoutClient({
                           </div>
                         ) : null}
                       </div>
-                      <div className="min-w-[220px] space-y-2">
+                      <div className="min-w-55 space-y-2">
                         <div className="rounded-[18px] border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-500">
                           {parkedSale.items
                             .map(
@@ -2791,7 +2796,7 @@ export default function CheckoutClient({
                   </div>
                 ))
               ) : (
-                <div className="rounded-[24px] border border-dashed border-stone-300 bg-white px-4 py-5 text-sm text-stone-500">
+                <div className="rounded-3xl border border-dashed border-stone-300 bg-white px-4 py-5 text-sm text-stone-500">
                   No saved carts or quotes right now.
                 </div>
               )}
