@@ -1,16 +1,23 @@
-'use client';
+"use client";
 
-import Image from 'next/image';
-import Link from 'next/link';
-import { type FormEvent, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import ThermalReceipt from '@/components/receipts/ThermalReceipt';
-import Button from '@/components/ui/Button';
-import Card from '@/components/ui/Card';
-import Input from '@/components/ui/Input';
-import { getCustomerDisplayName } from '@/lib/customers';
-import { dateTime, money } from '@/lib/format';
-import { roundCurrency } from '@/lib/inventory';
+import Image from "next/image";
+import Link from "next/link";
+import {
+  type FormEvent,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import ThermalReceipt from "@/components/receipts/ThermalReceipt";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import Input from "@/components/ui/Input";
+import { getCustomerDisplayName } from "@/lib/customers";
+import { dateTime, money } from "@/lib/format";
+import { roundCurrency } from "@/lib/inventory";
 import {
   buildOfflineCheckoutDraftStorageKey,
   buildOfflineSalesQueueStorageKey,
@@ -23,8 +30,8 @@ import {
   type OfflineCheckoutDraft,
   type OfflineQueuedSale,
   type OfflineQueuedSaleItem,
-  type OfflineReceiptSale
-} from '@/lib/offline-checkout';
+  type OfflineReceiptSale,
+} from "@/lib/offline-checkout";
 import {
   getPaymentSummary,
   getQuickCashAmounts,
@@ -33,9 +40,13 @@ import {
   PAYMENT_METHODS,
   type PaymentMethod,
   requiresReferenceNumber,
-  validatePaymentsForSale
-} from '@/lib/payments';
-import { calculateTaxBreakdown, sanitizeDefaultPaymentMethods, type TaxModeValue } from '@/lib/shop-settings';
+  validatePaymentsForSale,
+} from "@/lib/payments";
+import {
+  calculateTaxBreakdown,
+  sanitizeDefaultPaymentMethods,
+  type TaxModeValue,
+} from "@/lib/shop-settings";
 
 type Category = { id: string; name: string };
 type Product = {
@@ -66,7 +77,7 @@ type Customer = {
   receivableBalance: string;
   lastPurchaseAt: string | null;
 };
-type ScanFeedback = { tone: 'success' | 'error'; message: string } | null;
+type ScanFeedback = { tone: "success" | "error"; message: string } | null;
 type PaymentLine = {
   id: string;
   method: PaymentMethod;
@@ -84,13 +95,13 @@ type ParkedSale = {
   customerPhone: string | null;
   title: string | null;
   quoteReference: string | null;
-  type: 'SAVED_CART' | 'QUOTE';
+  type: "SAVED_CART" | "QUOTE";
   notes: string | null;
   subtotal: string;
   taxAmount: string;
   discountAmount: string;
   totalAmount: string;
-  status: 'HELD' | 'RESUMED' | 'CANCELLED' | 'EXPIRED';
+  status: "HELD" | "RESUMED" | "CANCELLED" | "EXPIRED";
   expiresAt: string;
   resumedAt: string | null;
   cancelledAt: string | null;
@@ -113,7 +124,12 @@ type ParkedSale = {
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   const tagName = target.tagName;
-  return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+  return (
+    target.isContentEditable ||
+    tagName === "INPUT" ||
+    tagName === "TEXTAREA" ||
+    tagName === "SELECT"
+  );
 }
 
 function toNumber(value: string) {
@@ -122,17 +138,20 @@ function toNumber(value: string) {
 }
 
 function createPaymentLine(method: PaymentMethod): PaymentLine {
-  return { id: crypto.randomUUID(), method, amount: '', referenceNumber: '' };
+  return { id: crypto.randomUUID(), method, amount: "", referenceNumber: "" };
 }
 
-function buildInitialPaymentLines(defaultPaymentMethods: PaymentMethod[], canAcceptCash: boolean) {
-  const preferredMethods = sanitizeDefaultPaymentMethods(defaultPaymentMethods).filter(
-    (method) => canAcceptCash || method !== 'Cash'
-  );
+function buildInitialPaymentLines(
+  defaultPaymentMethods: PaymentMethod[],
+  canAcceptCash: boolean,
+) {
+  const preferredMethods = sanitizeDefaultPaymentMethods(
+    defaultPaymentMethods,
+  ).filter((method) => canAcceptCash || method !== "Cash");
 
   return preferredMethods.length
     ? preferredMethods.map(createPaymentLine)
-    : [createPaymentLine(canAcceptCash ? 'Cash' : 'Card')];
+    : [createPaymentLine(canAcceptCash ? "Cash" : "Card")];
 }
 
 function toDateInputValue(value = new Date()) {
@@ -140,11 +159,17 @@ function toDateInputValue(value = new Date()) {
   return new Date(value.getTime() - offset * 60_000).toISOString().slice(0, 10);
 }
 
-function getOptionDisplayName(product: Pick<Product, 'name' | 'variantLabel'>) {
-  return product.variantLabel ? `${product.name} - ${product.variantLabel}` : product.name;
+function getOptionDisplayName(product: Pick<Product, "name" | "variantLabel">) {
+  return product.variantLabel
+    ? `${product.name} - ${product.variantLabel}`
+    : product.name;
 }
 
-function getReservedQtyForProduct(items: CartItem[], productId: string, exceptOptionId?: string) {
+function getReservedQtyForProduct(
+  items: CartItem[],
+  productId: string,
+  exceptOptionId?: string,
+) {
   return items.reduce((sum, item) => {
     if (item.productId !== productId) return sum;
     if (exceptOptionId && item.id === exceptOptionId) return sum;
@@ -152,33 +177,35 @@ function getReservedQtyForProduct(items: CartItem[], productId: string, exceptOp
   }, 0);
 }
 
-function getQueuedSaleStatusLabel(status: OfflineQueuedSale['status']) {
+function getQueuedSaleStatusLabel(status: OfflineQueuedSale["status"]) {
   switch (status) {
-    case 'SYNCING':
-      return 'Syncing';
-    case 'CONFLICT':
-      return 'Needs review';
-    case 'ERROR':
-      return 'Retry needed';
+    case "SYNCING":
+      return "Syncing";
+    case "CONFLICT":
+      return "Needs review";
+    case "ERROR":
+      return "Retry needed";
     default:
-      return 'Queued';
+      return "Queued";
   }
 }
 
-function getQueuedSaleStatusTone(status: OfflineQueuedSale['status']) {
+function getQueuedSaleStatusTone(status: OfflineQueuedSale["status"]) {
   switch (status) {
-    case 'SYNCING':
-      return 'border-sky-200 bg-sky-50 text-sky-700';
-    case 'CONFLICT':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    case 'ERROR':
-      return 'border-red-200 bg-red-50 text-red-700';
+    case "SYNCING":
+      return "border-sky-200 bg-sky-50 text-sky-700";
+    case "CONFLICT":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "ERROR":
+      return "border-red-200 bg-red-50 text-red-700";
     default:
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
 }
 
-function getQueueItemOptionId(item: Pick<OfflineQueuedSaleItem, 'productId' | 'variantId'>) {
+function getQueueItemOptionId(
+  item: Pick<OfflineQueuedSaleItem, "productId" | "variantId">,
+) {
   return item.variantId ?? item.productId;
 }
 
@@ -193,7 +220,11 @@ function hasMeaningfulDraft(input: OfflineCheckoutDraft) {
     Number(input.discountAmount || 0) > 0 ||
     Number(input.loyaltyPointsToRedeem || 0) > 0 ||
     input.isCreditSale ||
-    input.payments.some((payment) => payment.amount.trim().length > 0 || payment.referenceNumber.trim().length > 0)
+    input.payments.some(
+      (payment) =>
+        payment.amount.trim().length > 0 ||
+        payment.referenceNumber.trim().length > 0,
+    )
   );
 }
 
@@ -202,7 +233,7 @@ function buildInitialCheckoutPersistenceState({
   queueStorageKey,
   products,
   defaultPaymentMethods,
-  canAcceptCash
+  canAcceptCash,
 }: {
   draftStorageKey: string;
   queueStorageKey: string;
@@ -211,26 +242,35 @@ function buildInitialCheckoutPersistenceState({
   canAcceptCash: boolean;
 }) {
   const productMap = new Map(products.map((product) => [product.id, product]));
-  const fallbackPayments = buildInitialPaymentLines(defaultPaymentMethods, canAcceptCash);
+  const fallbackPayments = buildInitialPaymentLines(
+    defaultPaymentMethods,
+    canAcceptCash,
+  );
   const restored = {
-    queuedSales: readLocalStorageValue<OfflineQueuedSale[]>(queueStorageKey, []),
-    selectedCategory: '',
-    query: '',
+    queuedSales: readLocalStorageValue<OfflineQueuedSale[]>(
+      queueStorageKey,
+      [],
+    ),
+    selectedCategory: "",
+    query: "",
     cart: [] as CartItem[],
-    discountAmount: '0',
-    customerSearch: '',
+    discountAmount: "0",
+    customerSearch: "",
     selectedCustomerId: null as string | null,
-    customerName: '',
-    customerPhone: '',
-    loyaltyPointsToRedeem: '0',
+    customerName: "",
+    customerPhone: "",
+    loyaltyPointsToRedeem: "0",
     isCreditSale: false,
     creditDueDate: toDateInputValue(),
-    notes: '',
+    notes: "",
     payments: fallbackPayments,
-    message: ''
+    message: "",
   };
 
-  const draft = readLocalStorageValue<OfflineCheckoutDraft | null>(draftStorageKey, null);
+  const draft = readLocalStorageValue<OfflineCheckoutDraft | null>(
+    draftStorageKey,
+    null,
+  );
   if (draft?.version !== 1) {
     return restored;
   }
@@ -241,21 +281,30 @@ function buildInitialCheckoutPersistenceState({
   for (const entry of draft.cart) {
     const product = productMap.get(entry.optionId);
     if (!product) {
-      restoreNotes.push('One saved cart line was skipped because the product is no longer available.');
+      restoreNotes.push(
+        "One saved cart line was skipped because the product is no longer available.",
+      );
       continue;
     }
 
-    const reservedQty = getReservedQtyForProduct(restoredCart, product.productId);
+    const reservedQty = getReservedQtyForProduct(
+      restoredCart,
+      product.productId,
+    );
     const availableQty = Math.max(product.stockQty - reservedQty, 0);
     const nextQty = Math.min(entry.qty, availableQty);
 
     if (nextQty <= 0) {
-      restoreNotes.push(`${product.name} was skipped because current stock is no longer available.`);
+      restoreNotes.push(
+        `${product.name} was skipped because current stock is no longer available.`,
+      );
       continue;
     }
 
     if (nextQty < entry.qty) {
-      restoreNotes.push(`${product.name} was reduced to ${nextQty} based on current stock.`);
+      restoreNotes.push(
+        `${product.name} was reduced to ${nextQty} based on current stock.`,
+      );
     }
 
     restoredCart.push({ ...product, qty: nextQty });
@@ -278,16 +327,16 @@ function buildInitialCheckoutPersistenceState({
         id: payment.id || crypto.randomUUID(),
         method: payment.method,
         amount: payment.amount,
-        referenceNumber: payment.referenceNumber
+        referenceNumber: payment.referenceNumber,
       }))
     : fallbackPayments;
 
   if (restoredCart.length) {
-    restored.message = 'Restored the last checkout draft from this terminal.';
+    restored.message = "Restored the last checkout draft from this terminal.";
   }
 
   if (restoreNotes.length) {
-    restored.message = `${restored.message} ${restoreNotes.join(' ')}`.trim();
+    restored.message = `${restored.message} ${restoreNotes.join(" ")}`.trim();
   }
 
   return restored;
@@ -314,7 +363,7 @@ export default function CheckoutClient({
   receiptHeader,
   receiptFooter,
   receiptWidth,
-  initialParkedSales
+  initialParkedSales,
 }: {
   products: Product[];
   categories: Category[];
@@ -340,7 +389,7 @@ export default function CheckoutClient({
   };
   receiptHeader: string | null;
   receiptFooter: string | null;
-  receiptWidth: '58mm' | '80mm';
+  receiptWidth: "58mm" | "80mm";
   initialParkedSales: ParkedSale[];
 }) {
   const router = useRouter();
@@ -354,38 +403,41 @@ export default function CheckoutClient({
   const canAcceptCash = hasActiveCashSession;
   const draftStorageKey = useMemo(
     () => buildOfflineCheckoutDraftStorageKey(shopId, userId),
-    [shopId, userId]
+    [shopId, userId],
   );
   const queueStorageKey = useMemo(
     () => buildOfflineSalesQueueStorageKey(shopId, userId),
-    [shopId, userId]
+    [shopId, userId],
   );
-  const [initialLocalState] = useState(() =>
-    buildInitialCheckoutPersistenceState({
-      draftStorageKey,
-      queueStorageKey,
-      products,
-      defaultPaymentMethods,
-      canAcceptCash
-    })
-  );
+  // Keep the server render and the first client render identical.
+  // Browser-only persisted checkout state is restored after hydration in an effect below.
+  const persistenceInitRef = useRef({
+    draftStorageKey,
+    queueStorageKey,
+    products,
+    defaultPaymentMethods,
+    canAcceptCash,
+  });
 
-  const [selectedCategory, setSelectedCategory] = useState(initialLocalState.selectedCategory);
-  const [query, setQuery] = useState(initialLocalState.query);
-  const [scanQuery, setScanQuery] = useState('');
-  const [cart, setCart] = useState<CartItem[]>(initialLocalState.cart);
-  const [discountAmount, setDiscountAmount] = useState(initialLocalState.discountAmount);
-  const [customerSearch, setCustomerSearch] = useState(initialLocalState.customerSearch);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(initialLocalState.selectedCustomerId);
-  const [customerName, setCustomerName] = useState(initialLocalState.customerName);
-  const [customerPhone, setCustomerPhone] = useState(initialLocalState.customerPhone);
-  const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState(initialLocalState.loyaltyPointsToRedeem);
-  const [isCreditSale, setIsCreditSale] = useState(initialLocalState.isCreditSale);
-  const [creditDueDate, setCreditDueDate] = useState(initialLocalState.creditDueDate);
-  const [notes, setNotes] = useState(initialLocalState.notes);
-  const [payments, setPayments] = useState<PaymentLine[]>(initialLocalState.payments);
-  const [parkedSales, setParkedSales] = useState<ParkedSale[]>(initialParkedSales);
-  const [queuedSales, setQueuedSales] = useState<OfflineQueuedSale[]>(initialLocalState.queuedSales);
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [query, setQuery] = useState("");
+  const [scanQuery, setScanQuery] = useState("");
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [discountAmount, setDiscountAmount] = useState("0");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
+    null,
+  );
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState("0");
+  const [isCreditSale, setIsCreditSale] = useState(false);
+  const [creditDueDate, setCreditDueDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [payments, setPayments] = useState<PaymentLine[]>([]);
+  const [parkedSales, setParkedSales] =
+    useState<ParkedSale[]>(initialParkedSales);
+  const [queuedSales, setQueuedSales] = useState<OfflineQueuedSale[]>([]);
   const [activeReceiptId, setActiveReceiptId] = useState<string | null>(null);
   const [lastSyncedSale, setLastSyncedSale] = useState<{
     id: string;
@@ -393,16 +445,16 @@ export default function CheckoutClient({
     receiptNumber: string;
     localReceiptNumber: string;
   } | null>(null);
-  const [isOnline, setIsOnline] = useState(() =>
-    typeof navigator === 'undefined' ? true : navigator.onLine
-  );
+  const [isMounted, setIsMounted] = useState(false);
+  const [persistenceReady, setPersistenceReady] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
   const [syncingQueue, setSyncingQueue] = useState(false);
-  const [clock, setClock] = useState(() => Date.now());
-  const [error, setError] = useState('');
+  const [clock, setClock] = useState<number | null>(null);
+  const [error, setError] = useState("");
   const [scanFeedback, setScanFeedback] = useState<ScanFeedback>(null);
-  const [parkedFeedback, setParkedFeedback] = useState(initialLocalState.message);
+  const [parkedFeedback, setParkedFeedback] = useState("");
   const [loading, setLoading] = useState(false);
-  const [holding, setHolding] = useState<'SAVED_CART' | 'QUOTE' | null>(null);
+  const [holding, setHolding] = useState<"SAVED_CART" | "QUOTE" | null>(null);
   const [resumeLoadingId, setResumeLoadingId] = useState<string | null>(null);
   const [cancelLoadingId, setCancelLoadingId] = useState<string | null>(null);
   const hasSearchFilters = Boolean(query.trim() || selectedCategory);
@@ -411,11 +463,18 @@ export default function CheckoutClient({
     const term = query.toLowerCase().trim();
     return products
       .filter((product) => {
-        const matchesCategory = !selectedCategory || product.categoryId === selectedCategory;
+        const matchesCategory =
+          !selectedCategory || product.categoryId === selectedCategory;
         const matchesTerm =
           !term ||
-          [product.name, product.variantLabel ?? '', product.barcode ?? '', product.sku ?? '', product.category?.name ?? '']
-            .join(' ')
+          [
+            product.name,
+            product.variantLabel ?? "",
+            product.barcode ?? "",
+            product.sku ?? "",
+            product.category?.name ?? "",
+          ]
+            .join(" ")
             .toLowerCase()
             .includes(term);
         return matchesCategory && matchesTerm;
@@ -424,8 +483,9 @@ export default function CheckoutClient({
   }, [products, query, selectedCategory]);
 
   const selectedCustomer = useMemo(
-    () => customers.find((customer) => customer.id === selectedCustomerId) ?? null,
-    [customers, selectedCustomerId]
+    () =>
+      customers.find((customer) => customer.id === selectedCustomerId) ?? null,
+    [customers, selectedCustomerId],
   );
   const filteredCustomers = useMemo(() => {
     const term = customerSearch.trim().toLowerCase();
@@ -437,21 +497,27 @@ export default function CheckoutClient({
       .filter((customer) =>
         [
           getCustomerDisplayName(customer),
-          customer.phone ?? '',
-          customer.email ?? '',
-          customer.businessName ?? '',
-          customer.contactPerson ?? ''
+          customer.phone ?? "",
+          customer.email ?? "",
+          customer.businessName ?? "",
+          customer.contactPerson ?? "",
         ]
-          .join(' ')
+          .join(" ")
           .toLowerCase()
-          .includes(term)
+          .includes(term),
       )
       .slice(0, 6);
   }, [customerSearch, customers]);
 
-  const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const productMap = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products],
+  );
   const itemCount = cart.reduce((sum, item) => sum + item.qty, 0);
-  const subtotal = cart.reduce((sum, item) => sum + Number(item.price) * item.qty, 0);
+  const subtotal = cart.reduce(
+    (sum, item) => sum + Number(item.price) * item.qty,
+    0,
+  );
   const manualDiscount = Number(discountAmount || 0);
   const loyaltyDiscount = Number(loyaltyPointsToRedeem || 0);
   const discount = manualDiscount + loyaltyDiscount;
@@ -459,7 +525,7 @@ export default function CheckoutClient({
     subtotal,
     discountAmount: discount,
     taxRate,
-    taxMode
+    taxMode,
   });
   const taxAmount = taxPreview.taxAmount;
   const total = taxPreview.totalAmount;
@@ -470,10 +536,10 @@ export default function CheckoutClient({
         normalizePaymentInput({
           method: payment.method,
           amount: toNumber(payment.amount),
-          referenceNumber: payment.referenceNumber.trim() || null
-        })
+          referenceNumber: payment.referenceNumber.trim() || null,
+        }),
       ),
-    [payments]
+    [payments],
   );
 
   const paymentSummary = useMemo(
@@ -484,36 +550,55 @@ export default function CheckoutClient({
             remainingAmount: total,
             changeDue: 0,
             cashReceived: 0,
-            hasCashPayment: false
+            hasCashPayment: false,
           }
         : getPaymentSummary(total, paymentInputs),
-    [isCreditSale, paymentInputs, total]
+    [isCreditSale, paymentInputs, total],
   );
+
+  const loyaltyPointsError = useMemo(() => {
+    const pointsToRedeem = Number(loyaltyPointsToRedeem || 0);
+
+    if (!selectedCustomer || pointsToRedeem <= 0) {
+      return "";
+    }
+
+    if (pointsToRedeem > selectedCustomer.loyaltyBalance) {
+      return `Only ${selectedCustomer.loyaltyBalance} loyalty points are available for ${getCustomerDisplayName(selectedCustomer)}.`;
+    }
+
+    return "";
+  }, [loyaltyPointsToRedeem, selectedCustomer]);
 
   const paymentError = useMemo(() => {
     if (isCreditSale) {
-      if (!selectedCustomerId) return 'Attach a customer before posting a credit sale.';
-      if (!creditDueDate) return 'Choose a due date for the credit sale.';
+      if (!selectedCustomerId)
+        return "Attach a customer before posting a credit sale.";
+      if (!creditDueDate) return "Choose a due date for the credit sale.";
       if (
         Number(loyaltyPointsToRedeem) > 0 &&
         selectedCustomer &&
         Number(loyaltyPointsToRedeem) > selectedCustomer.loyaltyBalance
       ) {
-        return 'Customer does not have enough loyalty points for this redemption.';
+        return "Customer does not have enough loyalty points for this redemption.";
       }
-      return '';
+      return "";
     }
 
     if (Number(loyaltyPointsToRedeem) > 0) {
-      if (!selectedCustomerId) return 'Attach a customer before redeeming loyalty points.';
-      if (selectedCustomer && Number(loyaltyPointsToRedeem) > selectedCustomer.loyaltyBalance) {
-        return 'Customer does not have enough loyalty points for this redemption.';
+      if (!selectedCustomerId)
+        return "Attach a customer before redeeming loyalty points.";
+      if (
+        selectedCustomer &&
+        Number(loyaltyPointsToRedeem) > selectedCustomer.loyaltyBalance
+      ) {
+        return "Customer does not have enough loyalty points for this redemption.";
       }
     }
 
     const paymentValidation = validatePaymentsForSale(total, paymentInputs);
     if (!paymentValidation.ok) return paymentValidation.error;
-    return '';
+    return "";
   }, [
     creditDueDate,
     isCreditSale,
@@ -523,12 +608,17 @@ export default function CheckoutClient({
     payments.length,
     selectedCustomer,
     selectedCustomerId,
-    total
+    total,
   ]);
 
-  const stockSnapshotAgeMinutes = getStockSnapshotAgeMinutes(stockSnapshotCapturedAt, clock);
-  const isStockSnapshotStale = stockSnapshotAgeMinutes > offlineStockMaxAgeMinutes;
-  const offlineCheckoutBlocked = !isOnline && offlineStockStrict && isStockSnapshotStale;
+  const stockSnapshotAgeMinutes =
+    isMounted && clock !== null
+      ? getStockSnapshotAgeMinutes(stockSnapshotCapturedAt, clock)
+      : 0;
+  const isStockSnapshotStale =
+    isMounted && stockSnapshotAgeMinutes > offlineStockMaxAgeMinutes;
+  const offlineCheckoutBlocked =
+    isMounted && !isOnline && offlineStockStrict && isStockSnapshotStale;
   const canCompleteSale =
     cart.length > 0 &&
     !loading &&
@@ -537,14 +627,21 @@ export default function CheckoutClient({
     !paymentError &&
     !offlineCheckoutBlocked;
 
-  const pendingQueuedSales = queuedSales.filter((sale) => sale.status === 'PENDING');
-  const conflictedQueuedSales = queuedSales.filter((sale) => sale.status === 'CONFLICT');
-  const failedQueuedSales = queuedSales.filter((sale) => sale.status === 'ERROR');
+  const pendingQueuedSales = queuedSales.filter(
+    (sale) => sale.status === "PENDING",
+  );
+  const conflictedQueuedSales = queuedSales.filter(
+    (sale) => sale.status === "CONFLICT",
+  );
+  const failedQueuedSales = queuedSales.filter(
+    (sale) => sale.status === "ERROR",
+  );
   const resolvedActiveReceiptId =
     activeReceiptId && queuedSales.some((sale) => sale.id === activeReceiptId)
       ? activeReceiptId
-      : queuedSales[0]?.id ?? null;
-  const activeReceiptSale = queuedSales.find((sale) => sale.id === resolvedActiveReceiptId) ?? null;
+      : (queuedSales[0]?.id ?? null);
+  const activeReceiptSale =
+    queuedSales.find((sale) => sale.id === resolvedActiveReceiptId) ?? null;
 
   useEffect(() => {
     cartRef.current = cart;
@@ -555,6 +652,36 @@ export default function CheckoutClient({
   }, [queuedSales]);
 
   useEffect(() => {
+    const restored = buildInitialCheckoutPersistenceState(
+      persistenceInitRef.current,
+    );
+
+    setSelectedCategory(restored.selectedCategory);
+    setQuery(restored.query);
+    setCart(restored.cart);
+    setDiscountAmount(restored.discountAmount);
+    setCustomerSearch(restored.customerSearch);
+    setSelectedCustomerId(restored.selectedCustomerId);
+    setCustomerName(restored.customerName);
+    setCustomerPhone(restored.customerPhone);
+    setLoyaltyPointsToRedeem(restored.loyaltyPointsToRedeem);
+    setIsCreditSale(restored.isCreditSale);
+    setCreditDueDate(restored.creditDueDate);
+    setNotes(restored.notes);
+    setPayments(restored.payments);
+    setQueuedSales(restored.queuedSales);
+    setParkedFeedback(restored.message);
+
+    // Prevent the persistence effects from deleting/writing storage until the
+    // browser state above has been restored.
+    setPersistenceReady(true);
+  }, []);
+
+  useEffect(() => {
+    setIsMounted(true);
+    setIsOnline(typeof navigator === "undefined" ? true : navigator.onLine);
+    setClock(Date.now());
+
     const timer = window.setInterval(() => setClock(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
@@ -576,34 +703,34 @@ export default function CheckoutClient({
   const clearCartState = () => {
     setCart([]);
     setSelectedCustomerId(null);
-    setCustomerSearch('');
-    setCustomerName('');
-    setCustomerPhone('');
-    setDiscountAmount('0');
-    setLoyaltyPointsToRedeem('0');
+    setCustomerSearch("");
+    setCustomerName("");
+    setCustomerPhone("");
+    setDiscountAmount("0");
+    setLoyaltyPointsToRedeem("0");
     setIsCreditSale(false);
     setCreditDueDate(toDateInputValue());
-    setNotes('');
-    setScanQuery('');
+    setNotes("");
+    setScanQuery("");
     setScanFeedback(null);
-    setError('');
+    setError("");
     resetPayments();
   };
 
   function resetCheckoutState() {
     setCart([]);
-    setDiscountAmount('0');
-    setCustomerSearch('');
+    setDiscountAmount("0");
+    setCustomerSearch("");
     setSelectedCustomerId(null);
-    setCustomerName('');
-    setCustomerPhone('');
-    setLoyaltyPointsToRedeem('0');
+    setCustomerName("");
+    setCustomerPhone("");
+    setLoyaltyPointsToRedeem("0");
     setIsCreditSale(false);
     setCreditDueDate(toDateInputValue());
-    setNotes('');
-    setScanQuery('');
+    setNotes("");
+    setScanQuery("");
     setScanFeedback(null);
-    setError('');
+    setError("");
     resetPayments();
   }
 
@@ -611,22 +738,31 @@ export default function CheckoutClient({
     setSelectedCustomerId(customer.id);
     setCustomerSearch(getCustomerDisplayName(customer));
     setCustomerName(getCustomerDisplayName(customer));
-    setCustomerPhone(customer.phone ?? '');
-    setError('');
+    setCustomerPhone(customer.phone ?? "");
+    setError("");
   }
 
   function addToCart(product: Product) {
-    setError('');
-    setParkedFeedback('');
+    setError("");
+    setParkedFeedback("");
     const existing = cartRef.current.find((item) => item.id === product.id);
-    const reservedQty = getReservedQtyForProduct(cartRef.current, product.productId);
+    const reservedQty = getReservedQtyForProduct(
+      cartRef.current,
+      product.productId,
+    );
 
     if (existing) {
       if (reservedQty + 1 > product.stockQty) {
-        setError(`Cannot oversell. ${product.name} only has ${product.stockQty} in stock.`);
+        setError(
+          `Cannot oversell. ${product.name} only has ${product.stockQty} in stock.`,
+        );
         return false;
       }
-      setCart((current) => current.map((item) => (item.id === product.id ? { ...item, qty: item.qty + 1 } : item)));
+      setCart((current) =>
+        current.map((item) =>
+          item.id === product.id ? { ...item, qty: item.qty + 1 } : item,
+        ),
+      );
       return true;
     }
 
@@ -636,7 +772,9 @@ export default function CheckoutClient({
     }
 
     if (reservedQty + 1 > product.stockQty) {
-      setError(`Cannot oversell. ${product.name} only has ${product.stockQty} in stock.`);
+      setError(
+        `Cannot oversell. ${product.name} only has ${product.stockQty} in stock.`,
+      );
       return false;
     }
 
@@ -644,38 +782,47 @@ export default function CheckoutClient({
     return true;
   }
 
-  function updateQty(optionId: string, direction: 'increase' | 'decrease') {
+  function updateQty(optionId: string, direction: "increase" | "decrease") {
     const product = productMap.get(optionId);
     if (!product) return;
-    setError('');
+    setError("");
     setScanFeedback(null);
-    setParkedFeedback('');
+    setParkedFeedback("");
     setCart((current) => {
       const existing = current.find((item) => item.id === optionId);
       if (!existing) return current;
-      const nextQty = direction === 'increase' ? existing.qty + 1 : existing.qty - 1;
+      const nextQty =
+        direction === "increase" ? existing.qty + 1 : existing.qty - 1;
       if (nextQty <= 0) return current.filter((item) => item.id !== optionId);
 
-      const reservedOtherQty = getReservedQtyForProduct(current, product.productId, optionId);
+      const reservedOtherQty = getReservedQtyForProduct(
+        current,
+        product.productId,
+        optionId,
+      );
       if (reservedOtherQty + nextQty > product.stockQty) {
-        setError(`Cannot oversell. ${product.name} only has ${product.stockQty} in stock.`);
+        setError(
+          `Cannot oversell. ${product.name} only has ${product.stockQty} in stock.`,
+        );
         return current;
       }
 
-      return current.map((item) => (item.id === optionId ? { ...item, qty: nextQty } : item));
+      return current.map((item) =>
+        item.id === optionId ? { ...item, qty: nextQty } : item,
+      );
     });
   }
 
   function removeFromCart(optionId: string) {
-    setError('');
+    setError("");
     setScanFeedback(null);
-    setParkedFeedback('');
+    setParkedFeedback("");
     setCart((current) => current.filter((item) => item.id !== optionId));
   }
 
   function requestClearCart() {
     if (!cart.length || loading || holding) return;
-    if (!window.confirm('Clear all items from the current cart?')) return;
+    if (!window.confirm("Clear all items from the current cart?")) return;
     resetCheckoutState();
     focusScanInput();
   }
@@ -685,7 +832,9 @@ export default function CheckoutClient({
     const normalizedSku = normalizedValue.toLowerCase();
     return (
       products.find((product) => product.barcode?.trim() === normalizedValue) ??
-      products.find((product) => product.sku?.trim().toLowerCase() === normalizedSku) ??
+      products.find(
+        (product) => product.sku?.trim().toLowerCase() === normalizedSku,
+      ) ??
       null
     );
   }
@@ -693,17 +842,23 @@ export default function CheckoutClient({
   function handleScanSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = scanQuery.trim();
-    setError('');
-    setParkedFeedback('');
+    setError("");
+    setParkedFeedback("");
     setScanFeedback(null);
     if (!value) {
-      setScanFeedback({ tone: 'error', message: 'Scan or enter a barcode/SKU, then press Enter to add it.' });
+      setScanFeedback({
+        tone: "error",
+        message: "Scan or enter a barcode/SKU, then press Enter to add it.",
+      });
       focusScanInput();
       return false;
     }
     const product = findProductByScan(value);
     if (!product) {
-      setScanFeedback({ tone: 'error', message: `No product matched barcode/SKU "${value}".` });
+      setScanFeedback({
+        tone: "error",
+        message: `No product matched barcode/SKU "${value}".`,
+      });
       focusScanInput(true);
       return;
     }
@@ -712,8 +867,11 @@ export default function CheckoutClient({
       focusScanInput(true);
       return;
     }
-    setScanQuery('');
-    setScanFeedback({ tone: 'success', message: `${getOptionDisplayName(product)} added to cart.` });
+    setScanQuery("");
+    setScanFeedback({
+      tone: "success",
+      message: `${getOptionDisplayName(product)} added to cart.`,
+    });
     focusScanInput();
   }
 
@@ -722,24 +880,36 @@ export default function CheckoutClient({
       current.map((payment) => {
         if (payment.id !== lineId) return payment;
         const next = { ...payment, ...patch };
-        if (patch.method && !requiresReferenceNumber(patch.method)) next.referenceNumber = '';
+        if (patch.method && !requiresReferenceNumber(patch.method))
+          next.referenceNumber = "";
         return next;
-      })
+      }),
     );
   }
 
   function addPaymentLine() {
-    const nextMethod = canAcceptCash && payments.every((payment) => payment.method !== 'Cash') ? 'Cash' : 'Card';
+    const nextMethod =
+      canAcceptCash && payments.every((payment) => payment.method !== "Cash")
+        ? "Cash"
+        : "Card";
     setPayments((current) => [...current, createPaymentLine(nextMethod)]);
   }
 
   function removePaymentLine(lineId: string) {
-    setPayments((current) => (current.length === 1 ? current : current.filter((payment) => payment.id !== lineId)));
+    setPayments((current) =>
+      current.length === 1
+        ? current
+        : current.filter((payment) => payment.id !== lineId),
+    );
   }
 
   function getExactAmountForLine(lineId: string) {
     const paidExcludingLine = roundCurrency(
-      paymentInputs.reduce((sum, payment, index) => (payments[index]?.id === lineId ? sum : sum + payment.amount), 0)
+      paymentInputs.reduce(
+        (sum, payment, index) =>
+          payments[index]?.id === lineId ? sum : sum + payment.amount,
+        0,
+      ),
     );
     return roundCurrency(Math.max(total - paidExcludingLine, 0));
   }
@@ -748,7 +918,11 @@ export default function CheckoutClient({
     updatePaymentLine(lineId, { amount: amount.toFixed(2) });
   }
 
-  function buildSalePayload(clientRequestId: string, occurredAt: string, includePriceSnapshot: boolean) {
+  function buildSalePayload(
+    clientRequestId: string,
+    occurredAt: string,
+    includePriceSnapshot: boolean,
+  ) {
     return {
       clientRequestId,
       occurredAt,
@@ -766,7 +940,7 @@ export default function CheckoutClient({
         : paymentInputs.map((payment) => ({
             method: payment.method,
             amount: payment.amount,
-            referenceNumber: payment.referenceNumber ?? null
+            referenceNumber: payment.referenceNumber ?? null,
           })),
       items: cart.map((item) => ({
         optionId: item.id,
@@ -775,15 +949,17 @@ export default function CheckoutClient({
         productName: item.name,
         variantLabel: item.variantLabel,
         qty: item.qty,
-        priceSnapshot: includePriceSnapshot ? roundCurrency(Number(item.price)) : null
-      }))
+        priceSnapshot: includePriceSnapshot
+          ? roundCurrency(Number(item.price))
+          : null,
+      })),
     };
   }
 
   function buildOfflineReceipt(
     clientRequestId: string,
     localReceiptNumber: string,
-    occurredAt: string
+    occurredAt: string,
   ): OfflineReceiptSale {
     const normalizedPayments = isCreditSale
       ? []
@@ -792,18 +968,24 @@ export default function CheckoutClient({
           method: payment.method,
           amount: payment.amount.toFixed(2),
           referenceNumber: payment.referenceNumber ?? null,
-          createdAt: occurredAt
+          createdAt: occurredAt,
         }));
 
     return {
       id: clientRequestId,
       saleNumber: localReceiptNumber,
       receiptNumber: localReceiptNumber,
-      paymentMethod: isCreditSale ? 'Customer Credit' : getSalePaymentSummaryLabel(normalizedPayments),
+      paymentMethod: isCreditSale
+        ? "Customer Credit"
+        : getSalePaymentSummaryLabel(normalizedPayments),
       cashierName,
       customerEmail: selectedCustomer?.email ?? null,
       customerBusinessName: selectedCustomer?.businessName ?? null,
-      customerName: customerName || selectedCustomer?.businessName || selectedCustomer?.firstName || null,
+      customerName:
+        customerName ||
+        selectedCustomer?.businessName ||
+        selectedCustomer?.firstName ||
+        null,
       customerPhone: customerPhone || selectedCustomer?.phone || null,
       isCreditSale,
       creditDueDate: isCreditSale ? creditDueDate : null,
@@ -822,16 +1004,18 @@ export default function CheckoutClient({
       payments: normalizedPayments,
       items: cart.map((item) => ({
         id: item.id,
-        productName: item.variantLabel ? `${item.name} (${item.variantLabel})` : item.name,
+        productName: item.variantLabel
+          ? `${item.name} (${item.variantLabel})`
+          : item.name,
         qty: item.qty,
         unitPrice: Number(item.price).toFixed(2),
-        lineTotal: roundCurrency(Number(item.price) * item.qty).toFixed(2)
-      }))
+        lineTotal: roundCurrency(Number(item.price) * item.qty).toFixed(2),
+      })),
     };
   }
 
   function scheduleQueueSync(delayMs = 4_000) {
-    if (typeof window === 'undefined' || !window.navigator.onLine) {
+    if (typeof window === "undefined" || !window.navigator.onLine) {
       return;
     }
 
@@ -844,7 +1028,11 @@ export default function CheckoutClient({
     }, delayMs);
   }
 
-  function queueSaleForLater(clientRequestId: string, occurredAt: string, reason: string) {
+  function queueSaleForLater(
+    clientRequestId: string,
+    occurredAt: string,
+    reason: string,
+  ) {
     const localReceiptNumber = createOfflineReceiptNumber(new Date(occurredAt));
     const queuedSale: OfflineQueuedSale = {
       id: clientRequestId,
@@ -852,14 +1040,21 @@ export default function CheckoutClient({
       userId,
       localReceiptNumber,
       queuedAt: new Date().toISOString(),
-      status: 'PENDING',
+      status: "PENDING",
       payload: buildSalePayload(clientRequestId, occurredAt, true),
-      receipt: buildOfflineReceipt(clientRequestId, localReceiptNumber, occurredAt),
+      receipt: buildOfflineReceipt(
+        clientRequestId,
+        localReceiptNumber,
+        occurredAt,
+      ),
       conflicts: [],
-      lastError: null
+      lastError: null,
     };
 
-    setQueuedSales((current) => [queuedSale, ...current.filter((entry) => entry.id !== queuedSale.id)]);
+    setQueuedSales((current) => [
+      queuedSale,
+      ...current.filter((entry) => entry.id !== queuedSale.id),
+    ]);
     setActiveReceiptId(queuedSale.id);
     setLastSyncedSale(null);
     resetCheckoutState();
@@ -873,12 +1068,12 @@ export default function CheckoutClient({
       return;
     }
 
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
       return;
     }
 
     const candidates = queuedSalesRef.current.filter(
-      (sale) => sale.status === 'PENDING' || sale.status === 'ERROR'
+      (sale) => sale.status === "PENDING" || sale.status === "ERROR",
     );
 
     if (!candidates.length) {
@@ -892,54 +1087,64 @@ export default function CheckoutClient({
       setQueuedSales((current) =>
         current.map((entry) =>
           entry.id === queuedSale.id
-            ? { ...entry, status: 'SYNCING', lastError: null }
-            : entry
-        )
+            ? { ...entry, status: "SYNCING", lastError: null }
+            : entry,
+        ),
       );
 
       try {
-        const response = await fetch('/api/sales', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const response = await fetch("/api/sales", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...queuedSale.payload,
             items: queuedSale.payload.items.map((item) => ({
               productId: item.productId,
               variantId: item.variantId,
               qty: item.qty,
-              priceSnapshot: item.priceSnapshot
-            }))
-          })
+              priceSnapshot: item.priceSnapshot,
+            })),
+          }),
         });
-        const data = await response.json().catch(() => ({ error: 'Unable to sync queued sale.' }));
+        const data = await response
+          .json()
+          .catch(() => ({ error: "Unable to sync queued sale." }));
 
         if (response.ok && data?.sale) {
-          setQueuedSales((current) => current.filter((entry) => entry.id !== queuedSale.id));
+          setQueuedSales((current) =>
+            current.filter((entry) => entry.id !== queuedSale.id),
+          );
           setLastSyncedSale({
             id: data.sale.id,
             saleNumber: data.sale.saleNumber,
             receiptNumber: data.sale.receiptNumber,
-            localReceiptNumber: queuedSale.localReceiptNumber
+            localReceiptNumber: queuedSale.localReceiptNumber,
           });
           setParkedFeedback(
-            `Queued sale ${queuedSale.localReceiptNumber} synced as receipt ${data.sale.receiptNumber}.`
+            `Queued sale ${queuedSale.localReceiptNumber} synced as receipt ${data.sale.receiptNumber}.`,
           );
           router.refresh();
           continue;
         }
 
-        if (response.status === 409 && data?.code === 'OFFLINE_SYNC_CONFLICT' && Array.isArray(data.conflicts)) {
+        if (
+          response.status === 409 &&
+          data?.code === "OFFLINE_SYNC_CONFLICT" &&
+          Array.isArray(data.conflicts)
+        ) {
           setQueuedSales((current) =>
             current.map((entry) =>
               entry.id === queuedSale.id
                 ? {
                     ...entry,
-                    status: 'CONFLICT',
+                    status: "CONFLICT",
                     conflicts: data.conflicts,
-                    lastError: data.error ?? 'Queued sale needs cashier review before sync can continue.'
+                    lastError:
+                      data.error ??
+                      "Queued sale needs cashier review before sync can continue.",
                   }
-                : entry
-            )
+                : entry,
+            ),
           );
           continue;
         }
@@ -949,12 +1154,12 @@ export default function CheckoutClient({
             entry.id === queuedSale.id
               ? {
                   ...entry,
-                  status: 'ERROR',
+                  status: "ERROR",
                   conflicts: [],
-                  lastError: data?.error ?? 'Unable to sync queued sale.'
+                  lastError: data?.error ?? "Unable to sync queued sale.",
                 }
-              : entry
-          )
+              : entry,
+          ),
         );
       } catch {
         setQueuedSales((current) =>
@@ -962,11 +1167,12 @@ export default function CheckoutClient({
             entry.id === queuedSale.id
               ? {
                   ...entry,
-                  status: 'ERROR',
-                  lastError: 'Connection dropped before the queued sale could sync.'
+                  status: "ERROR",
+                  lastError:
+                    "Connection dropped before the queued sale could sync.",
                 }
-              : entry
-          )
+              : entry,
+          ),
         );
         break;
       }
@@ -981,11 +1187,15 @@ export default function CheckoutClient({
   });
   const handleOnlineEffect = useEffectEvent(() => {
     setIsOnline(true);
-    setParkedFeedback('Connection restored. Syncing queued sales now.');
+    setParkedFeedback("Connection restored. Syncing queued sales now.");
     void syncQueuedSalesNow();
   });
 
   useEffect(() => {
+    if (!persistenceReady) {
+      return;
+    }
+
     const draft: OfflineCheckoutDraft = {
       version: 1,
       updatedAt: new Date().toISOString(),
@@ -993,7 +1203,7 @@ export default function CheckoutClient({
       query,
       cart: cart.map((item) => ({
         optionId: item.id,
-        qty: item.qty
+        qty: item.qty,
       })),
       discountAmount,
       customerSearch,
@@ -1008,8 +1218,8 @@ export default function CheckoutClient({
         id: payment.id,
         method: payment.method,
         amount: payment.amount,
-        referenceNumber: payment.referenceNumber
-      }))
+        referenceNumber: payment.referenceNumber,
+      })),
     };
 
     if (hasMeaningfulDraft(draft)) {
@@ -1032,17 +1242,22 @@ export default function CheckoutClient({
     payments,
     query,
     selectedCategory,
-    selectedCustomerId
+    selectedCustomerId,
+    persistenceReady,
   ]);
 
   useEffect(() => {
+    if (!persistenceReady) {
+      return;
+    }
+
     if (queuedSales.length) {
       writeLocalStorageValue(queueStorageKey, queuedSales);
       return;
     }
 
     removeLocalStorageValue(queueStorageKey);
-  }, [queueStorageKey, queuedSales]);
+  }, [persistenceReady, queueStorageKey, queuedSales]);
 
   useEffect(() => {
     function handleOnline() {
@@ -1053,12 +1268,12 @@ export default function CheckoutClient({
       setIsOnline(false);
     }
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
@@ -1067,7 +1282,11 @@ export default function CheckoutClient({
       return;
     }
 
-    if (!queuedSales.some((sale) => sale.status === 'PENDING' || sale.status === 'ERROR')) {
+    if (
+      !queuedSales.some(
+        (sale) => sale.status === "PENDING" || sale.status === "ERROR",
+      )
+    ) {
       return;
     }
 
@@ -1083,7 +1302,7 @@ export default function CheckoutClient({
   }, []);
 
   useEffect(() => {
-    const parkedSaleId = searchParams.get('parkedSaleId');
+    const parkedSaleId = searchParams.get("parkedSaleId");
     if (!parkedSaleId || handledSearchParamResumeRef.current === parkedSaleId) {
       return;
     }
@@ -1091,36 +1310,40 @@ export default function CheckoutClient({
     const parkedSale = parkedSales.find((entry) => entry.id === parkedSaleId);
     if (!parkedSale) {
       handledSearchParamResumeRef.current = parkedSaleId;
-      setError('That saved checkout entry is no longer available or has already expired.');
-      router.replace('/checkout');
+      setError(
+        "That saved checkout entry is no longer available or has already expired.",
+      );
+      router.replace("/checkout");
       return;
     }
 
     handledSearchParamResumeRef.current = parkedSaleId;
     void resumeParkedSale(parkedSale, {
       skipReplaceConfirm: true,
-      clearSearchParamAfter: true
+      clearSearchParamAfter: true,
     });
   }, [parkedSales, router, searchParams]);
 
-  async function saveCheckoutDraft(type: 'SAVED_CART' | 'QUOTE') {
+  async function saveCheckoutDraft(type: "SAVED_CART" | "QUOTE") {
     if (!cart.length) {
-      setError(`Add at least one item before saving this ${type === 'QUOTE' ? 'quote' : 'cart'}.`);
+      setError(
+        `Add at least one item before saving this ${type === "QUOTE" ? "quote" : "cart"}.`,
+      );
       return;
     }
 
     setHolding(type);
-    setError('');
-    setParkedFeedback('');
+    setError("");
+    setParkedFeedback("");
     try {
-      const response = await fetch('/api/parked-sales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/parked-sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type,
           title:
-            type === 'QUOTE'
-              ? `${selectedCustomerId ? 'Customer' : 'Walk-in'} quote`
+            type === "QUOTE"
+              ? `${selectedCustomerId ? "Customer" : "Walk-in"} quote`
               : null,
           customerId: selectedCustomerId,
           customerName,
@@ -1130,110 +1353,157 @@ export default function CheckoutClient({
           items: cart.map((item) => ({
             productId: item.productId,
             variantId: item.variantId,
-            qty: item.qty
-          }))
-        })
+            qty: item.qty,
+          })),
+        }),
       });
 
-      const data = await response.json().catch(() => ({ error: 'Unable to save the checkout draft.' }));
+      const data = await response
+        .json()
+        .catch(() => ({ error: "Unable to save the checkout draft." }));
 
       if (!response.ok || !data?.parkedSale) {
-        setError(data?.error ?? 'Unable to save the checkout draft.');
+        setError(data?.error ?? "Unable to save the checkout draft.");
         return;
       }
 
       setParkedSales((current) => [data.parkedSale, ...current].slice(0, 20));
       setParkedFeedback(
-        type === 'QUOTE'
-          ? `Quote ${data.parkedSale.quoteReference ?? ''} saved successfully.`
-          : 'Cart saved successfully and moved to the saved cart list.'
+        type === "QUOTE"
+          ? `Quote ${data.parkedSale.quoteReference ?? ""} saved successfully.`
+          : "Cart saved successfully and moved to the saved cart list.",
       );
       clearCartState();
     } catch (error) {
       console.error(error);
-      setError('Unable to save the checkout draft.');
+      setError("Unable to save the checkout draft.");
     } finally {
       setHolding(null);
     }
   }
 
-  async function resumeParkedSale(parkedSale: ParkedSale, options?: { skipReplaceConfirm?: boolean; clearSearchParamAfter?: boolean }) {
-    setError('');
-    setParkedFeedback('');
-    const missingOption = parkedSale.items.find((item) => !productMap.has(item.productVariantId ?? item.productId));
+  async function resumeParkedSale(
+    parkedSale: ParkedSale,
+    options?: { skipReplaceConfirm?: boolean; clearSearchParamAfter?: boolean },
+  ) {
+    setError("");
+    setParkedFeedback("");
+    const missingOption = parkedSale.items.find(
+      (item) => !productMap.has(item.productVariantId ?? item.productId),
+    );
     if (missingOption) {
-      setError('One or more items in this saved checkout entry are no longer available in the active catalog.');
+      setError(
+        "One or more items in this saved checkout entry are no longer available in the active catalog.",
+      );
       return false;
     }
-    if (cart.length && !options?.skipReplaceConfirm && !window.confirm('Load this saved checkout entry and replace the current checkout cart?')) return false;
+    if (
+      cart.length &&
+      !options?.skipReplaceConfirm &&
+      !window.confirm(
+        "Load this saved checkout entry and replace the current checkout cart?",
+      )
+    )
+      return false;
     setResumeLoadingId(parkedSale.id);
     try {
-      const response = await fetch(`/api/parked-sales/${parkedSale.id}/resume`, { method: 'POST' });
-      const data = await response.json().catch(() => ({ error: 'Unable to load the saved checkout entry.' }));
+      const response = await fetch(
+        `/api/parked-sales/${parkedSale.id}/resume`,
+        { method: "POST" },
+      );
+      const data = await response
+        .json()
+        .catch(() => ({ error: "Unable to load the saved checkout entry." }));
       setResumeLoadingId(null);
       if (!response.ok) {
-        setError(data?.error ?? 'Unable to load the saved checkout entry.');
+        setError(data?.error ?? "Unable to load the saved checkout entry.");
         return false;
       }
       setCart(
         parkedSale.items.map((item) => {
-          const option = productMap.get(item.productVariantId ?? item.productId)!;
+          const option = productMap.get(
+            item.productVariantId ?? item.productId,
+          )!;
           return { ...option, qty: item.qty };
-        })
+        }),
       );
       setSelectedCustomerId(parkedSale.customerId ?? null);
       setCustomerSearch(
         parkedSale.customerId
-          ? getCustomerDisplayName(customers.find((customer) => customer.id === parkedSale.customerId) ?? {})
-          : parkedSale.customerName ?? ''
+          ? getCustomerDisplayName(
+              customers.find(
+                (customer) => customer.id === parkedSale.customerId,
+              ) ?? {},
+            )
+          : (parkedSale.customerName ?? ""),
       );
-      setCustomerName(parkedSale.customerName ?? '');
-      setCustomerPhone(parkedSale.customerPhone ?? '');
-      setLoyaltyPointsToRedeem('0');
+      setCustomerName(parkedSale.customerName ?? "");
+      setCustomerPhone(parkedSale.customerPhone ?? "");
+      setLoyaltyPointsToRedeem("0");
       setIsCreditSale(false);
       setCreditDueDate(toDateInputValue());
-      setNotes(parkedSale.notes ?? '');
+      setNotes(parkedSale.notes ?? "");
       setDiscountAmount(parkedSale.discountAmount);
-      setScanQuery('');
+      setScanQuery("");
       setScanFeedback(null);
       resetPayments();
-      setParkedSales((current) => current.filter((entry) => entry.id !== parkedSale.id));
-      setParkedFeedback(`Loaded ${parkedSale.type === 'QUOTE' ? 'quote' : 'saved cart'} from ${parkedSale.cashierName}.`);
+      setParkedSales((current) =>
+        current.filter((entry) => entry.id !== parkedSale.id),
+      );
+      setParkedFeedback(
+        `Loaded ${parkedSale.type === "QUOTE" ? "quote" : "saved cart"} from ${parkedSale.cashierName}.`,
+      );
       focusScanInput();
       if (options?.clearSearchParamAfter) {
-        router.replace('/checkout');
+        router.replace("/checkout");
       }
       return true;
     } catch {
       setResumeLoadingId(null);
-      setError('Unable to load the saved checkout entry.');
+      setError("Unable to load the saved checkout entry.");
       return false;
     }
   }
 
   async function cancelParkedSale(parkedSale: ParkedSale) {
-    setError('');
-    setParkedFeedback('');
-    if (!window.confirm('Cancel this saved checkout entry? This removes it from the active list.')) return;
+    setError("");
+    setParkedFeedback("");
+    if (
+      !window.confirm(
+        "Cancel this saved checkout entry? This removes it from the active list.",
+      )
+    )
+      return;
     setCancelLoadingId(parkedSale.id);
     try {
-      const response = await fetch(`/api/parked-sales/${parkedSale.id}`, { method: 'DELETE' });
-      const data = await response.json().catch(() => ({ error: 'Unable to cancel the saved checkout entry.' }));
+      const response = await fetch(`/api/parked-sales/${parkedSale.id}`, {
+        method: "DELETE",
+      });
+      const data = await response
+        .json()
+        .catch(() => ({ error: "Unable to cancel the saved checkout entry." }));
       setCancelLoadingId(null);
       if (!response.ok) {
-        setError(data?.error ?? 'Unable to cancel the saved checkout entry.');
+        setError(data?.error ?? "Unable to cancel the saved checkout entry.");
         return;
       }
-      setParkedSales((current) => current.filter((entry) => entry.id !== parkedSale.id));
-      setParkedFeedback('Held cart cancelled successfully.');
+      setParkedSales((current) =>
+        current.filter((entry) => entry.id !== parkedSale.id),
+      );
+      setParkedFeedback("Held cart cancelled successfully.");
     } catch {
       setCancelLoadingId(null);
-      setError('Unable to cancel the saved checkout entry.');
+      setError("Unable to cancel the saved checkout entry.");
     }
   }
 
   function restoreQueuedSaleToCheckout(queuedSale: OfflineQueuedSale) {
-    if (cart.length && !window.confirm('Load this queued sale into checkout and replace the current cart?')) {
+    if (
+      cart.length &&
+      !window.confirm(
+        "Load this queued sale into checkout and replace the current cart?",
+      )
+    ) {
       return;
     }
 
@@ -1243,28 +1513,39 @@ export default function CheckoutClient({
     for (const item of queuedSale.payload.items) {
       const option = productMap.get(getQueueItemOptionId(item));
       if (!option) {
-        restoreNotes.push(`${item.productName} was removed from the branch catalog and was skipped.`);
+        restoreNotes.push(
+          `${item.productName} was removed from the branch catalog and was skipped.`,
+        );
         continue;
       }
 
-      const reservedQty = getReservedQtyForProduct(restoredCart, option.productId);
+      const reservedQty = getReservedQtyForProduct(
+        restoredCart,
+        option.productId,
+      );
       const availableQty = Math.max(option.stockQty - reservedQty, 0);
       const resolvedQty = Math.min(item.qty, availableQty);
 
       if (resolvedQty <= 0) {
-        restoreNotes.push(`${option.name} is now out of stock and was removed from this recovery cart.`);
+        restoreNotes.push(
+          `${option.name} is now out of stock and was removed from this recovery cart.`,
+        );
         continue;
       }
 
       if (resolvedQty < item.qty) {
-        restoreNotes.push(`${option.name} was reduced from ${item.qty} to ${resolvedQty} based on current stock.`);
+        restoreNotes.push(
+          `${option.name} was reduced from ${item.qty} to ${resolvedQty} based on current stock.`,
+        );
       }
 
       restoredCart.push({ ...option, qty: resolvedQty });
     }
 
     if (!restoredCart.length) {
-      setError('No sellable items remain in this queued sale. Remove it from the queue after reviewing the conflict notes.');
+      setError(
+        "No sellable items remain in this queued sale. Remove it from the queue after reviewing the conflict notes.",
+      );
       return;
     }
 
@@ -1272,15 +1553,19 @@ export default function CheckoutClient({
     setSelectedCustomerId(queuedSale.payload.customerId);
     setCustomerSearch(
       queuedSale.payload.customerId
-        ? getCustomerDisplayName(customers.find((customer) => customer.id === queuedSale.payload.customerId) ?? {})
-        : queuedSale.payload.customerName ?? ''
+        ? getCustomerDisplayName(
+            customers.find(
+              (customer) => customer.id === queuedSale.payload.customerId,
+            ) ?? {},
+          )
+        : (queuedSale.payload.customerName ?? ""),
     );
-    setCustomerName(queuedSale.payload.customerName ?? '');
-    setCustomerPhone(queuedSale.payload.customerPhone ?? '');
+    setCustomerName(queuedSale.payload.customerName ?? "");
+    setCustomerPhone(queuedSale.payload.customerPhone ?? "");
     setLoyaltyPointsToRedeem(String(queuedSale.payload.loyaltyPointsToRedeem));
     setIsCreditSale(queuedSale.payload.isCreditSale);
     setCreditDueDate(queuedSale.payload.creditDueDate ?? toDateInputValue());
-    setNotes(queuedSale.payload.notes ?? '');
+    setNotes(queuedSale.payload.notes ?? "");
     setDiscountAmount(String(queuedSale.payload.discountAmount));
     setPayments(
       queuedSale.payload.isCreditSale
@@ -1289,74 +1574,90 @@ export default function CheckoutClient({
             id: crypto.randomUUID(),
             method: payment.method,
             amount: payment.amount.toFixed(2),
-            referenceNumber: payment.referenceNumber ?? ''
-          }))
+            referenceNumber: payment.referenceNumber ?? "",
+          })),
     );
-    setQueuedSales((current) => current.filter((entry) => entry.id !== queuedSale.id));
+    setQueuedSales((current) =>
+      current.filter((entry) => entry.id !== queuedSale.id),
+    );
     setScanFeedback(null);
-    setError('');
+    setError("");
     setParkedFeedback(
       restoreNotes.length
-        ? `Queued sale moved back into checkout. ${restoreNotes.join(' ')}`
-        : 'Queued sale moved back into checkout for cashier review.'
+        ? `Queued sale moved back into checkout. ${restoreNotes.join(" ")}`
+        : "Queued sale moved back into checkout for cashier review.",
     );
     focusScanInput();
   }
 
   function removeQueuedSale(queuedSale: OfflineQueuedSale) {
-    if (!window.confirm('Remove this queued sale from local offline storage?')) {
+    if (
+      !window.confirm("Remove this queued sale from local offline storage?")
+    ) {
       return;
     }
 
-    setQueuedSales((current) => current.filter((entry) => entry.id !== queuedSale.id));
-    setParkedFeedback(`Removed queued sale ${queuedSale.localReceiptNumber} from local storage.`);
+    setQueuedSales((current) =>
+      current.filter((entry) => entry.id !== queuedSale.id),
+    );
+    setParkedFeedback(
+      `Removed queued sale ${queuedSale.localReceiptNumber} from local storage.`,
+    );
   }
 
   async function completeSale() {
-    setError('');
-    setParkedFeedback('');
-    if (!cart.length) return setError('Please add at least one item to the cart.');
-    if (discount < 0) return setError('Discount amount cannot be negative.');
-    if (discount > subtotal + taxAmount) return setError('Discount cannot exceed the sale total.');
+    setError("");
+    setParkedFeedback("");
+    if (!cart.length)
+      return setError("Please add at least one item to the cart.");
+    if (discount < 0) return setError("Discount amount cannot be negative.");
+    if (discount > subtotal + taxAmount)
+      return setError("Discount cannot exceed the sale total.");
     if (paymentError) return setError(paymentError);
     if (offlineCheckoutBlocked) {
       setError(
-        `Offline checkout is blocked because the branch stock snapshot is ${Math.ceil(stockSnapshotAgeMinutes)} minutes old. Refresh the branch while online before selling offline again.`
+        `Offline checkout is blocked because the branch stock snapshot is ${Math.ceil(stockSnapshotAgeMinutes)} minutes old. Refresh the branch while online before selling offline again.`,
       );
       return;
     }
 
     const occurredAt = new Date().toISOString();
-    const clientRequestId = createOfflineClientRequestId(shopId, userId, new Date(occurredAt));
+    const clientRequestId = createOfflineClientRequestId(
+      shopId,
+      userId,
+      new Date(occurredAt),
+    );
     const livePayload = buildSalePayload(clientRequestId, occurredAt, false);
 
     if (!isOnline) {
       queueSaleForLater(
         clientRequestId,
         occurredAt,
-        `Offline mode detected. Sale ${clientRequestId.slice(-8)} was queued locally and a temporary receipt is ready to print.`
+        `Offline mode detected. Sale ${clientRequestId.slice(-8)} was queued locally and a temporary receipt is ready to print.`,
       );
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch('/api/sales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...livePayload,
           items: livePayload.items.map((item) => ({
             productId: item.productId,
             variantId: item.variantId,
-            qty: item.qty
-          }))
-        })
+            qty: item.qty,
+          })),
+        }),
       });
-      const data = await response.json().catch(() => ({ error: 'Failed to create sale.' }));
+      const data = await response
+        .json()
+        .catch(() => ({ error: "Failed to create sale." }));
       setLoading(false);
       if (!response.ok) {
-        setError(data.error ?? 'Failed to create sale.');
+        setError(data.error ?? "Failed to create sale.");
         return;
       }
       resetCheckoutState();
@@ -1367,7 +1668,7 @@ export default function CheckoutClient({
       queueSaleForLater(
         clientRequestId,
         occurredAt,
-        'Sale submission failed because the network dropped. The sale was queued locally and will sync automatically when the connection returns.'
+        "Sale submission failed because the network dropped. The sale was queued locally and will sync automatically when the connection returns.",
       );
     }
   }
@@ -1382,24 +1683,24 @@ export default function CheckoutClient({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'F2') {
+      if (event.key === "F2") {
         event.preventDefault();
         focusScanInput(true);
         return;
       }
       if (isTypingTarget(event.target)) return;
-      if (event.key === 'F9' && canCompleteSale) {
+      if (event.key === "F9" && canCompleteSale) {
         event.preventDefault();
         handleCompleteSaleShortcut();
         return;
       }
-      if (event.key === 'F4' && cart.length) {
+      if (event.key === "F4" && cart.length) {
         event.preventDefault();
         handleClearCartShortcut();
       }
     }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [canCompleteSale, cart.length]);
 
   return (
@@ -1410,10 +1711,12 @@ export default function CheckoutClient({
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-                  isOnline ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'
+                  isOnline
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-700"
                 }`}
               >
-                {isOnline ? 'Online' : 'Offline'}
+                {isOnline ? "Online" : "Offline"}
               </span>
               <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-600">
                 {queuedSales.length} unsynced sale(s)
@@ -1424,39 +1727,61 @@ export default function CheckoutClient({
                 </span>
               ) : null}
             </div>
-            <h2 className="mt-3 text-2xl font-black text-stone-950">Offline-ready checkout</h2>
+            <h2 className="mt-3 text-2xl font-black text-stone-950">
+              Offline-ready checkout
+            </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-500">
-              Cart drafts persist locally, offline-completed sales queue for replay, and queued receipts stay printable until the branch reconnects.
+              Cart drafts persist locally, offline-completed sales queue for
+              replay, and queued receipts stay printable until the branch
+              reconnects.
             </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Queued</div>
-              <div className="mt-1 text-2xl font-black text-stone-950">{queuedSales.length}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                Queued
+              </div>
+              <div className="mt-1 text-2xl font-black text-stone-950">
+                {queuedSales.length}
+              </div>
             </div>
             <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Pending sync</div>
-              <div className="mt-1 text-2xl font-black text-sky-700">{pendingQueuedSales.length + failedQueuedSales.length}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                Pending sync
+              </div>
+              <div className="mt-1 text-2xl font-black text-sky-700">
+                {pendingQueuedSales.length + failedQueuedSales.length}
+              </div>
             </div>
             <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Stock age</div>
-              <div className={`mt-1 text-2xl font-black ${isStockSnapshotStale ? 'text-amber-700' : 'text-emerald-700'}`}>
-                {Number.isFinite(stockSnapshotAgeMinutes) ? `${Math.ceil(stockSnapshotAgeMinutes)}m` : 'Unknown'}
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                Stock age
+              </div>
+              <div
+                className={`mt-1 text-2xl font-black ${isStockSnapshotStale ? "text-amber-700" : "text-emerald-700"}`}
+              >
+                {Number.isFinite(stockSnapshotAgeMinutes)
+                  ? `${Math.ceil(stockSnapshotAgeMinutes)}m`
+                  : "Unknown"}
               </div>
             </div>
           </div>
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-          <div className={`rounded-[24px] border px-4 py-4 text-sm ${
-            offlineCheckoutBlocked
-              ? 'border-red-200 bg-red-50 text-red-800'
-              : !isOnline && isStockSnapshotStale
-                ? 'border-amber-200 bg-amber-50 text-amber-800'
-                : 'border-stone-200 bg-stone-50 text-stone-700'
-          }`}>
-            <div className="font-semibold text-stone-900">Offline stock safeguard</div>
+          <div
+            className={`rounded-[24px] border px-4 py-4 text-sm ${
+              offlineCheckoutBlocked
+                ? "border-red-200 bg-red-50 text-red-800"
+                : !isOnline && isStockSnapshotStale
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "border-stone-200 bg-stone-50 text-stone-700"
+            }`}
+          >
+            <div className="font-semibold text-stone-900">
+              Offline stock safeguard
+            </div>
             <div className="mt-2 leading-6">
               {offlineCheckoutBlocked
                 ? `This branch is offline and the stock snapshot is older than ${offlineStockMaxAgeMinutes} minutes, so offline selling is locked until checkout is refreshed online.`
@@ -1473,15 +1798,22 @@ export default function CheckoutClient({
               disabled={!queuedSales.length || syncingQueue || !isOnline}
               onClick={() => void syncQueuedSalesNow()}
             >
-              {syncingQueue ? 'Syncing queued sales...' : 'Retry sync now'}
+              {syncingQueue ? "Syncing queued sales..." : "Retry sync now"}
             </Button>
             {activeReceiptSale ? (
-              <Button type="button" variant="secondary" onClick={() => setActiveReceiptId(activeReceiptSale.id)}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setActiveReceiptId(activeReceiptSale.id)}
+              >
                 Open queued receipt
               </Button>
             ) : null}
             {lastSyncedSale ? (
-              <Link href={`/print/receipt/${lastSyncedSale.id}`} className="inline-flex">
+              <Link
+                href={`/print/receipt/${lastSyncedSale.id}`}
+                className="inline-flex"
+              >
                 <Button type="button" className="w-full justify-center">
                   Open last synced receipt
                 </Button>
@@ -1492,18 +1824,24 @@ export default function CheckoutClient({
 
         {lastSyncedSale ? (
           <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Queued receipt {lastSyncedSale.localReceiptNumber} synced successfully as {lastSyncedSale.receiptNumber}.
+            Queued receipt {lastSyncedSale.localReceiptNumber} synced
+            successfully as {lastSyncedSale.receiptNumber}.
           </div>
         ) : null}
 
         {queuedSales.length ? (
           <div className="mt-6 space-y-3">
             {queuedSales.map((queuedSale) => (
-              <div key={queuedSale.id} className="rounded-[24px] border border-stone-200 bg-white p-4">
+              <div
+                key={queuedSale.id}
+                className="rounded-[24px] border border-stone-200 bg-white p-4"
+              >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${getQueuedSaleStatusTone(queuedSale.status)}`}>
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${getQueuedSaleStatusTone(queuedSale.status)}`}
+                      >
                         {getQueuedSaleStatusLabel(queuedSale.status)}
                       </span>
                       <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-600">
@@ -1514,7 +1852,8 @@ export default function CheckoutClient({
                       {money(queuedSale.receipt.totalAmount, currencySymbol)}
                     </div>
                     <div className="mt-1 text-sm text-stone-500">
-                      Queued {dateTime(queuedSale.queuedAt)} / {queuedSale.receipt.items.length} line(s)
+                      Queued {dateTime(queuedSale.queuedAt)} /{" "}
+                      {queuedSale.receipt.items.length} line(s)
                     </div>
                     {queuedSale.lastError ? (
                       <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -1524,8 +1863,13 @@ export default function CheckoutClient({
                     {queuedSale.conflicts.length ? (
                       <div className="mt-3 space-y-2">
                         {queuedSale.conflicts.map((conflict, index) => (
-                          <div key={`${queuedSale.id}-${conflict.productId}-${index}`} className="rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                            <div className="font-semibold text-amber-900">{conflict.productName}</div>
+                          <div
+                            key={`${queuedSale.id}-${conflict.productId}-${index}`}
+                            className="rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                          >
+                            <div className="font-semibold text-amber-900">
+                              {conflict.productName}
+                            </div>
                             <div className="mt-1">{conflict.message}</div>
                           </div>
                         ))}
@@ -1534,10 +1878,15 @@ export default function CheckoutClient({
                   </div>
 
                   <div className="min-w-[240px] space-y-2">
-                    <Button type="button" variant="secondary" className="w-full justify-center" onClick={() => setActiveReceiptId(queuedSale.id)}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full justify-center"
+                      onClick={() => setActiveReceiptId(queuedSale.id)}
+                    >
                       Print local receipt
                     </Button>
-                    {queuedSale.status !== 'SYNCING' ? (
+                    {queuedSale.status !== "SYNCING" ? (
                       <Button
                         type="button"
                         variant="secondary"
@@ -1549,7 +1898,7 @@ export default function CheckoutClient({
                     ) : null}
                     <Button
                       type="button"
-                      disabled={queuedSale.status === 'SYNCING' || !isOnline}
+                      disabled={queuedSale.status === "SYNCING" || !isOnline}
                       className="w-full justify-center"
                       onClick={() => void syncQueuedSalesNow()}
                     >
@@ -1559,7 +1908,7 @@ export default function CheckoutClient({
                       type="button"
                       variant="danger"
                       className="w-full justify-center"
-                      disabled={queuedSale.status === 'SYNCING'}
+                      disabled={queuedSale.status === "SYNCING"}
                       onClick={() => removeQueuedSale(queuedSale)}
                     >
                       Remove queued sale
@@ -1576,10 +1925,17 @@ export default function CheckoutClient({
         <Card>
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">Offline receipt</div>
-              <h2 className="mt-2 text-2xl font-black text-stone-950">Temporary receipt preview</h2>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                Offline receipt
+              </div>
+              <h2 className="mt-2 text-2xl font-black text-stone-950">
+                Temporary receipt preview
+              </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-500">
-                This receipt uses the local offline identifier {activeReceiptSale.localReceiptNumber}. It remains printable until the sale syncs to the server and gets a final receipt number.
+                This receipt uses the local offline identifier{" "}
+                {activeReceiptSale.localReceiptNumber}. It remains printable
+                until the sale syncs to the server and gets a final receipt
+                number.
               </p>
             </div>
           </div>
@@ -1601,29 +1957,70 @@ export default function CheckoutClient({
         <Card className="space-y-5 overflow-hidden">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">Scanner-first checkout</div>
-              <h2 className="mt-2 text-2xl font-black text-stone-900">Find products</h2>
-              <p className="mt-1 text-sm text-stone-500">Scan a barcode or type a SKU to add fast, then fall back to manual search or browsing when needed.</p>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                Scanner-first checkout
+              </div>
+              <h2 className="mt-2 text-2xl font-black text-stone-900">
+                Find products
+              </h2>
+              <p className="mt-1 text-sm text-stone-500">
+                Scan a barcode or type a SKU to add fast, then fall back to
+                manual search or browsing when needed.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:w-auto">
-              <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3"><div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Visible</div><div className="mt-1 text-xl font-black text-stone-950">{filtered.length}</div></div>
-              <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3"><div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Cart lines</div><div className="mt-1 text-xl font-black text-stone-950">{cart.length}</div></div>
+              <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  Visible
+                </div>
+                <div className="mt-1 text-xl font-black text-stone-950">
+                  {filtered.length}
+                </div>
+              </div>
+              <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                  Cart lines
+                </div>
+                <div className="mt-1 text-xl font-black text-stone-950">
+                  {cart.length}
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="rounded-[24px] border border-stone-200 bg-stone-50/80 p-4">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,320px)_1fr]">
               <form onSubmit={handleScanSubmit} className="flex gap-3">
-                <Input ref={scanInputRef} placeholder="Scan barcode or enter SKU" value={scanQuery} onChange={(event) => setScanQuery(event.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
-                <Button type="submit" variant="secondary" className="shrink-0">Add</Button>
+                <Input
+                  ref={scanInputRef}
+                  placeholder="Scan barcode or enter SKU"
+                  value={scanQuery}
+                  onChange={(event) => setScanQuery(event.target.value)}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <Button type="submit" variant="secondary" className="shrink-0">
+                  Add
+                </Button>
               </form>
-              <Input placeholder="Search by product, variant, SKU, barcode..." value={query} onChange={(event) => setQuery(event.target.value)} />
+              <Input
+                placeholder="Search by product, variant, SKU, barcode..."
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-stone-500">
-              <span className="rounded-full border border-stone-200 bg-white px-3 py-1">Enter adds scanned item</span>
-              <span className="rounded-full border border-stone-200 bg-white px-3 py-1">`F2` focuses barcode input</span>
-              <span className="rounded-full border border-stone-200 bg-white px-3 py-1">Existing cart lines increase quantity automatically</span>
+              <span className="rounded-full border border-stone-200 bg-white px-3 py-1">
+                Enter adds scanned item
+              </span>
+              <span className="rounded-full border border-stone-200 bg-white px-3 py-1">
+                `F2` focuses barcode input
+              </span>
+              <span className="rounded-full border border-stone-200 bg-white px-3 py-1">
+                Existing cart lines increase quantity automatically
+              </span>
             </div>
 
             {barcodeScannerNotes ? (
@@ -1633,18 +2030,45 @@ export default function CheckoutClient({
             ) : null}
 
             <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={() => setSelectedCategory('')} className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${!selectedCategory ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50'}`}>All</button>
+              <button
+                type="button"
+                onClick={() => setSelectedCategory("")}
+                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${!selectedCategory ? "border-emerald-600 bg-emerald-600 text-white" : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"}`}
+              >
+                All
+              </button>
               {categories.map((category) => (
-                <button key={category.id} type="button" onClick={() => setSelectedCategory(category.id)} className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedCategory === category.id ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50'}`}>{category.name}</button>
+                <button
+                  key={category.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(category.id)}
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedCategory === category.id ? "border-emerald-600 bg-emerald-600 text-white" : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"}`}
+                >
+                  {category.name}
+                </button>
               ))}
             </div>
 
-            {scanFeedback ? <div className={`mt-3 rounded-2xl border px-4 py-3 text-sm ${scanFeedback.tone === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{scanFeedback.message}</div> : null}
+            {scanFeedback ? (
+              <div
+                className={`mt-3 rounded-2xl border px-4 py-3 text-sm ${scanFeedback.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}
+              >
+                {scanFeedback.message}
+              </div>
+            ) : null}
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((product) => (
-              <button key={product.id} type="button" onClick={() => { setScanFeedback(null); addToCart(product); }} className="rounded-[24px] border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,245,244,0.92))] p-4 text-left shadow-[0_18px_36px_-30px_rgba(28,25,23,0.35)] transition hover:-translate-y-1 hover:border-emerald-300">
+              <button
+                key={product.id}
+                type="button"
+                onClick={() => {
+                  setScanFeedback(null);
+                  addToCart(product);
+                }}
+                className="rounded-[24px] border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,245,244,0.92))] p-4 text-left shadow-[0_18px_36px_-30px_rgba(28,25,23,0.35)] transition hover:-translate-y-1 hover:border-emerald-300"
+              >
                 <div className="flex items-start gap-3">
                   <div className="h-16 w-16 overflow-hidden rounded-[18px] border border-stone-200 bg-stone-50">
                     {product.imageUrl ? (
@@ -1658,15 +2082,41 @@ export default function CheckoutClient({
                     ) : null}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold text-stone-900">{product.name}</div>
-                    <div className="mt-1 text-sm text-stone-500">{product.variantLabel ?? product.category?.name ?? 'Standard item'}</div>
-                    <div className="mt-2 text-xs text-stone-500">SKU: {product.sku ?? 'N/A'} / Barcode: {product.barcode ?? 'N/A'}</div>
+                    <div className="truncate font-semibold text-stone-900">
+                      {product.name}
+                    </div>
+                    <div className="mt-1 text-sm text-stone-500">
+                      {product.variantLabel ??
+                        product.category?.name ??
+                        "Standard item"}
+                    </div>
+                    <div className="mt-2 text-xs text-stone-500">
+                      SKU: {product.sku ?? "N/A"} / Barcode:{" "}
+                      {product.barcode ?? "N/A"}
+                    </div>
                   </div>
-                  <div className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${product.stockQty <= 0 ? 'border-red-200 bg-red-50 text-red-700' : product.stockQty <= 5 ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{product.stockQty <= 0 ? 'Out' : product.stockQty <= 5 ? 'Low' : 'Ready'}</div>
+                  <div
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${product.stockQty <= 0 ? "border-red-200 bg-red-50 text-red-700" : product.stockQty <= 5 ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}
+                  >
+                    {product.stockQty <= 0
+                      ? "Out"
+                      : product.stockQty <= 5
+                        ? "Low"
+                        : "Ready"}
+                  </div>
                 </div>
                 <div className="mt-4 flex items-end justify-between gap-3">
-                  <div><div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">Selling price</div><div className="mt-1 text-2xl font-black text-emerald-700">{money(product.price, currencySymbol)}</div></div>
-                  <div className="text-right text-xs font-medium text-stone-500">{product.stockQty} in stock</div>
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                      Selling price
+                    </div>
+                    <div className="mt-1 text-2xl font-black text-emerald-700">
+                      {money(product.price, currencySymbol)}
+                    </div>
+                  </div>
+                  <div className="text-right text-xs font-medium text-stone-500">
+                    {product.stockQty} in stock
+                  </div>
                 </div>
               </button>
             ))}
@@ -1675,30 +2125,56 @@ export default function CheckoutClient({
           {!filtered.length ? (
             products.length ? (
               <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-6">
-                <div className="text-sm font-semibold text-stone-900">{hasSearchFilters ? 'No products matched that search.' : 'No products are visible right now.'}</div>
+                <div className="text-sm font-semibold text-stone-900">
+                  {hasSearchFilters
+                    ? "No products matched that search."
+                    : "No products are visible right now."}
+                </div>
                 <div className="mt-2 text-sm text-stone-500">
                   {hasSearchFilters
-                    ? 'Try a barcode, SKU, or a broader category filter to keep checkout moving.'
-                    : 'The active branch catalog is empty or fully filtered out.'}
+                    ? "Try a barcode, SKU, or a broader category filter to keep checkout moving."
+                    : "The active branch catalog is empty or fully filtered out."}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button type="button" variant="secondary" onClick={() => { setQuery(''); setSelectedCategory(''); focusScanInput(); }}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setQuery("");
+                      setSelectedCategory("");
+                      focusScanInput();
+                    }}
+                  >
                     Reset search
                   </Button>
-                  <Link href="/products" className="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-700/90 bg-[linear-gradient(180deg,#059669,#047857)] px-4 text-sm font-semibold text-white shadow-[0_18px_30px_-20px_rgba(5,150,105,0.9)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_36px_-20px_rgba(5,150,105,0.85)]">
+                  <Link
+                    href="/products"
+                    className="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-700/90 bg-[linear-gradient(180deg,#059669,#047857)] px-4 text-sm font-semibold text-white shadow-[0_18px_30px_-20px_rgba(5,150,105,0.9)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_36px_-20px_rgba(5,150,105,0.85)]"
+                  >
                     Add products
                   </Link>
                 </div>
               </div>
             ) : (
               <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-6">
-                <div className="text-sm font-semibold text-stone-900">This branch does not have sellable products yet.</div>
-                <div className="mt-2 text-sm text-stone-500">Add products with barcode or SKU data first, then the scanner-first checkout flow will be ready for cashiers.</div>
+                <div className="text-sm font-semibold text-stone-900">
+                  This branch does not have sellable products yet.
+                </div>
+                <div className="mt-2 text-sm text-stone-500">
+                  Add products with barcode or SKU data first, then the
+                  scanner-first checkout flow will be ready for cashiers.
+                </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href="/products" className="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-700/90 bg-[linear-gradient(180deg,#059669,#047857)] px-4 text-sm font-semibold text-white shadow-[0_18px_30px_-20px_rgba(5,150,105,0.9)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_36px_-20px_rgba(5,150,105,0.85)]">
+                  <Link
+                    href="/products"
+                    className="inline-flex h-11 items-center justify-center rounded-2xl border border-emerald-700/90 bg-[linear-gradient(180deg,#059669,#047857)] px-4 text-sm font-semibold text-white shadow-[0_18px_30px_-20px_rgba(5,150,105,0.9)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_36px_-20px_rgba(5,150,105,0.85)]"
+                  >
                     Create first product
                   </Link>
-                  <Link href="/settings" className="inline-flex h-11 items-center justify-center rounded-2xl border border-stone-200 bg-white/90 px-4 text-sm font-semibold text-stone-800 shadow-[0_12px_24px_-18px_rgba(28,25,23,0.32)] transition duration-200 hover:-translate-y-0.5 hover:border-stone-300 hover:bg-white">
+                  <Link
+                    href="/settings"
+                    className="inline-flex h-11 items-center justify-center rounded-2xl border border-stone-200 bg-white/90 px-4 text-sm font-semibold text-stone-800 shadow-[0_12px_24px_-18px_rgba(28,25,23,0.32)] transition duration-200 hover:-translate-y-0.5 hover:border-stone-300 hover:bg-white"
+                  >
                     Review branch settings
                   </Link>
                 </div>
@@ -1709,51 +2185,131 @@ export default function CheckoutClient({
         <Card className="space-y-5 xl:sticky xl:top-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">Sale desk</div>
-              <h2 className="mt-2 text-2xl font-black text-stone-900">Checkout summary</h2>
-              <p className="mt-1 text-sm text-stone-500">Cashier: <span className="font-semibold text-stone-700">{cashierName}</span></p>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                Sale desk
+              </div>
+              <h2 className="mt-2 text-2xl font-black text-stone-900">
+                Checkout summary
+              </h2>
+              <p className="mt-1 text-sm text-stone-500">
+                Cashier:{" "}
+                <span className="font-semibold text-stone-700">
+                  {cashierName}
+                </span>
+              </p>
             </div>
-            <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3 text-right"><div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">Items</div><div className="text-2xl font-black text-stone-950">{itemCount}</div></div>
+            <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3 text-right">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+                Items
+              </div>
+              <div className="text-2xl font-black text-stone-950">
+                {itemCount}
+              </div>
+            </div>
           </div>
 
           <div className="space-y-3">
-            {cart.length ? cart.map((item) => (
-              <div key={item.id} className="rounded-[24px] border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,245,244,0.9))] p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-stone-900">{item.name}</div>
-                    <div className="text-sm text-stone-500">{item.variantLabel ?? 'Base item'}</div>
-                    <div className="mt-1 text-xs text-stone-500">{money(item.price, currencySymbol)} each</div>
+            {cart.length ? (
+              cart.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-[24px] border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,245,244,0.9))] p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-stone-900">
+                        {item.name}
+                      </div>
+                      <div className="text-sm text-stone-500">
+                        {item.variantLabel ?? "Base item"}
+                      </div>
+                      <div className="mt-1 text-xs text-stone-500">
+                        {money(item.price, currencySymbol)} each
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-10 w-10 px-0"
+                        onClick={() => updateQty(item.id, "decrease")}
+                      >
+                        -
+                      </Button>
+                      <span className="inline-flex h-10 min-w-10 items-center justify-center rounded-2xl bg-white px-3 font-semibold text-stone-900">
+                        {item.qty}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-10 w-10 px-0"
+                        onClick={() => updateQty(item.id, "increase")}
+                      >
+                        +
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-10 px-3 text-xs uppercase tracking-[0.14em]"
+                        onClick={() => removeFromCart(item.id)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button type="button" variant="secondary" className="h-10 w-10 px-0" onClick={() => updateQty(item.id, 'decrease')}>-</Button>
-                    <span className="inline-flex h-10 min-w-10 items-center justify-center rounded-2xl bg-white px-3 font-semibold text-stone-900">{item.qty}</span>
-                    <Button type="button" variant="secondary" className="h-10 w-10 px-0" onClick={() => updateQty(item.id, 'increase')}>+</Button>
-                    <Button type="button" variant="ghost" className="h-10 px-3 text-xs uppercase tracking-[0.14em]" onClick={() => removeFromCart(item.id)}>Remove</Button>
+                  <div className="mt-4 flex items-center justify-between rounded-[20px] border border-stone-200/80 bg-white/80 px-3 py-2.5 text-sm">
+                    <span className="text-stone-500">Line total</span>
+                    <span className="font-semibold text-stone-900">
+                      {money(Number(item.price) * item.qty, currencySymbol)}
+                    </span>
                   </div>
                 </div>
-                <div className="mt-4 flex items-center justify-between rounded-[20px] border border-stone-200/80 bg-white/80 px-3 py-2.5 text-sm"><span className="text-stone-500">Line total</span><span className="font-semibold text-stone-900">{money(Number(item.price) * item.qty, currencySymbol)}</span></div>
-              </div>
-            )) : (
+              ))
+            ) : (
               <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-6">
-                <div className="text-sm font-semibold text-stone-900">No items in the cart yet.</div>
-                <div className="mt-2 text-sm text-stone-500">Scan a barcode and press Enter, browse the product tiles, or use `F2` to jump back to the scanner input.</div>
+                <div className="text-sm font-semibold text-stone-900">
+                  No items in the cart yet.
+                </div>
+                <div className="mt-2 text-sm text-stone-500">
+                  Scan a barcode and press Enter, browse the product tiles, or
+                  use `F2` to jump back to the scanner input.
+                </div>
               </div>
             )}
           </div>
 
           <div className="rounded-[26px] border border-stone-200 bg-stone-50/85 p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">Customer and payment</div>
-            <p className="mt-1 text-sm text-stone-500">Attach a customer when you need history, loyalty, or receivables.</p>
-            {!canAcceptCash && !isCreditSale ? <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Open a register session first to accept cash payments. Non-cash payments can still be processed safely.</div> : null}
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+              Customer and payment
+            </div>
+            <p className="mt-1 text-sm text-stone-500">
+              Attach a customer when you need history, loyalty, or receivables.
+            </p>
+            {!canAcceptCash && !isCreditSale ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Open a register session first to accept cash payments. Non-cash
+                payments can still be processed safely.
+              </div>
+            ) : null}
 
             <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-4">
-              <div className="text-sm font-semibold text-stone-900">Customer search</div>
+              <div className="text-sm font-semibold text-stone-900">
+                Customer search
+              </div>
               <div className="mt-3 grid gap-3">
-                <Input placeholder="Search customer by name, phone, email, or business" value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} />
+                <Input
+                  placeholder="Search customer by name, phone, email, or business"
+                  value={customerSearch}
+                  onChange={(event) => setCustomerSearch(event.target.value)}
+                />
                 <div className="flex flex-wrap gap-2">
                   {filteredCustomers.map((customer) => (
-                    <button key={customer.id} type="button" onClick={() => selectCustomer(customer)} className={`rounded-full border px-3 py-2 text-sm transition ${selectedCustomerId === customer.id ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300 hover:bg-white'}`}>
+                    <button
+                      key={customer.id}
+                      type="button"
+                      onClick={() => selectCustomer(customer)}
+                      className={`rounded-full border px-3 py-2 text-sm transition ${selectedCustomerId === customer.id ? "border-emerald-600 bg-emerald-600 text-white" : "border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300 hover:bg-white"}`}
+                    >
                       {getCustomerDisplayName(customer)}
                     </button>
                   ))}
@@ -1764,11 +2320,35 @@ export default function CheckoutClient({
                 <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="font-semibold text-stone-900">{getCustomerDisplayName(selectedCustomer)}</div>
-                      <div className="text-stone-600">{selectedCustomer.phone || 'No phone'}{selectedCustomer.email ? ` / ${selectedCustomer.email}` : ''}</div>
-                      <div className="mt-1 text-xs text-stone-500">Points {selectedCustomer.loyaltyBalance} / Receivables {money(selectedCustomer.receivableBalance, currencySymbol)}</div>
+                      <div className="font-semibold text-stone-900">
+                        {getCustomerDisplayName(selectedCustomer)}
+                      </div>
+                      <div className="text-stone-600">
+                        {selectedCustomer.phone || "No phone"}
+                        {selectedCustomer.email
+                          ? ` / ${selectedCustomer.email}`
+                          : ""}
+                      </div>
+                      <div className="mt-1 text-xs text-stone-500">
+                        Points {selectedCustomer.loyaltyBalance} / Receivables{" "}
+                        {money(
+                          selectedCustomer.receivableBalance,
+                          currencySymbol,
+                        )}
+                      </div>
                     </div>
-                    <Button type="button" variant="ghost" onClick={() => { setSelectedCustomerId(null); setCustomerSearch(''); setCustomerName(''); setCustomerPhone(''); setLoyaltyPointsToRedeem('0'); setIsCreditSale(false); }}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setSelectedCustomerId(null);
+                        setCustomerSearch("");
+                        setCustomerName("");
+                        setCustomerPhone("");
+                        setLoyaltyPointsToRedeem("0");
+                        setIsCreditSale(false);
+                      }}
+                    >
                       Clear
                     </Button>
                   </div>
@@ -1777,113 +2357,444 @@ export default function CheckoutClient({
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <Input placeholder="Customer name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} />
-              <Input placeholder="Customer phone" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} />
-              <Input type="number" step="0.01" placeholder="Discount amount" value={discountAmount} onChange={(event) => setDiscountAmount(event.target.value)} />
-              <Input placeholder="Notes for this sale" value={notes} onChange={(event) => setNotes(event.target.value)} />
+              <Input
+                placeholder="Customer name"
+                value={customerName}
+                onChange={(event) => setCustomerName(event.target.value)}
+              />
+              <Input
+                placeholder="Customer phone"
+                value={customerPhone}
+                onChange={(event) => setCustomerPhone(event.target.value)}
+              />
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Discount amount"
+                value={discountAmount}
+                onChange={(event) => setDiscountAmount(event.target.value)}
+              />
+              <Input
+                placeholder="Notes for this sale"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+              />
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <Input type="number" min={0} placeholder="Redeem loyalty points" value={loyaltyPointsToRedeem} onChange={(event) => setLoyaltyPointsToRedeem(event.target.value)} />
+              <div>
+                <Input
+                  type="number"
+                  min={0}
+                  max={selectedCustomer?.loyaltyBalance ?? undefined}
+                  placeholder="Redeem loyalty points"
+                  value={loyaltyPointsToRedeem}
+                  onChange={(event) =>
+                    setLoyaltyPointsToRedeem(event.target.value)
+                  }
+                />
+                {loyaltyPointsError ? (
+                  <div className="mt-2 text-xs font-medium text-red-600">
+                    {loyaltyPointsError}
+                  </div>
+                ) : null}
+              </div>
               <label className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
-                <input type="checkbox" checked={isCreditSale} onChange={(event) => setIsCreditSale(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={isCreditSale}
+                  onChange={(event) => setIsCreditSale(event.target.checked)}
+                />
                 Post as customer credit sale
               </label>
-              <Input type="date" value={creditDueDate} onChange={(event) => setCreditDueDate(event.target.value)} disabled={!isCreditSale} />
+              <Input
+                type="date"
+                value={creditDueDate}
+                onChange={(event) => setCreditDueDate(event.target.value)}
+                disabled={!isCreditSale}
+              />
             </div>
 
-            {!isCreditSale ? <div className="mt-4 space-y-3">
-              {payments.map((payment) => {
-                const exactAmount = getExactAmountForLine(payment.id);
-                const quickAmounts = getQuickCashAmounts(exactAmount).filter((amount) => amount !== exactAmount);
-                return (
-                  <div key={payment.id} className="rounded-[24px] border border-stone-200 bg-white p-4">
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto]">
-                      <select className="h-11 w-full rounded-2xl border border-stone-200 bg-white px-4 text-sm text-stone-900 outline-none focus:border-emerald-500" value={payment.method} onChange={(event) => updatePaymentLine(payment.id, { method: event.target.value as PaymentMethod })}>
-                        {PAYMENT_METHODS.map((method) => <option key={method} value={method} disabled={method === 'Cash' && !canAcceptCash}>{method === 'Cash' && !canAcceptCash ? 'Cash (open register required)' : method}</option>)}
-                      </select>
-                      <Input type="number" step="0.01" placeholder={payment.method === 'Cash' ? 'Cash received' : 'Amount'} value={payment.amount} onChange={(event) => updatePaymentLine(payment.id, { amount: event.target.value })} />
-                      <Button type="button" variant="ghost" onClick={() => removePaymentLine(payment.id)} disabled={payments.length === 1}>Remove</Button>
+            {!isCreditSale ? (
+              <div className="mt-4 space-y-3">
+                {payments.map((payment) => {
+                  const exactAmount = getExactAmountForLine(payment.id);
+                  const quickAmounts = getQuickCashAmounts(exactAmount).filter(
+                    (amount) => amount !== exactAmount,
+                  );
+                  return (
+                    <div
+                      key={payment.id}
+                      className="rounded-[24px] border border-stone-200 bg-white p-4"
+                    >
+                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto]">
+                        <select
+                          className="h-11 w-full rounded-2xl border border-stone-200 bg-white px-4 text-sm text-stone-900 outline-none focus:border-emerald-500"
+                          value={payment.method}
+                          onChange={(event) =>
+                            updatePaymentLine(payment.id, {
+                              method: event.target.value as PaymentMethod,
+                            })
+                          }
+                        >
+                          {PAYMENT_METHODS.map((method) => (
+                            <option
+                              key={method}
+                              value={method}
+                              disabled={method === "Cash" && !canAcceptCash}
+                            >
+                              {method === "Cash" && !canAcceptCash
+                                ? "Cash (open register required)"
+                                : method}
+                            </option>
+                          ))}
+                        </select>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder={
+                            payment.method === "Cash"
+                              ? "Cash received"
+                              : "Amount"
+                          }
+                          value={payment.amount}
+                          onChange={(event) =>
+                            updatePaymentLine(payment.id, {
+                              amount: event.target.value,
+                            })
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => removePaymentLine(payment.id)}
+                          disabled={payments.length === 1}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      {requiresReferenceNumber(payment.method) ? (
+                        <div className="mt-3">
+                          <Input
+                            placeholder={
+                              payment.method === "Card"
+                                ? "Card reference number"
+                                : payment.method === "E-Wallet"
+                                  ? "E-wallet reference number"
+                                  : "Bank transfer reference number"
+                            }
+                            value={payment.referenceNumber}
+                            onChange={(event) =>
+                              updatePaymentLine(payment.id, {
+                                referenceNumber: event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                      ) : null}
+                      {payment.method === "Cash" ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-9 px-3 text-xs"
+                            onClick={() =>
+                              setPaymentLineAmount(payment.id, exactAmount)
+                            }
+                          >
+                            Exact amount
+                          </Button>
+                          {quickAmounts.map((amount) => (
+                            <Button
+                              key={`${payment.id}-${amount}`}
+                              type="button"
+                              variant="secondary"
+                              className="h-9 px-3 text-xs"
+                              onClick={() =>
+                                setPaymentLineAmount(payment.id, amount)
+                              }
+                            >
+                              {money(amount, currencySymbol)}
+                            </Button>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
-                    {requiresReferenceNumber(payment.method) ? <div className="mt-3"><Input placeholder={payment.method === 'Card' ? 'Card reference number' : payment.method === 'E-Wallet' ? 'E-wallet reference number' : 'Bank transfer reference number'} value={payment.referenceNumber} onChange={(event) => updatePaymentLine(payment.id, { referenceNumber: event.target.value })} /></div> : null}
-                    {payment.method === 'Cash' ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="secondary" className="h-9 px-3 text-xs" onClick={() => setPaymentLineAmount(payment.id, exactAmount)}>Exact amount</Button>{quickAmounts.map((amount) => <Button key={`${payment.id}-${amount}`} type="button" variant="secondary" className="h-9 px-3 text-xs" onClick={() => setPaymentLineAmount(payment.id, amount)}>{money(amount, currencySymbol)}</Button>)}</div> : null}
-                  </div>
-                );
-              })}
-              <Button type="button" variant="secondary" onClick={addPaymentLine}>Add payment line</Button>
-            </div> : (
+                  );
+                })}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={addPaymentLine}
+                >
+                  Add payment line
+                </Button>
+              </div>
+            ) : (
               <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                This sale will be posted to customer receivables and collected later from the customer ledger.
+                This sale will be posted to customer receivables and collected
+                later from the customer ledger.
               </div>
             )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[22px] border border-stone-200 bg-white px-4 py-3"><div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Paid total</div><div className="mt-1 text-2xl font-black text-stone-950">{money(paymentSummary.totalPaid, currencySymbol)}</div></div>
-              <div className="rounded-[22px] border border-stone-200 bg-white px-4 py-3"><div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Remaining</div><div className={`mt-1 text-2xl font-black ${paymentSummary.remainingAmount > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{money(paymentSummary.remainingAmount, currencySymbol)}</div></div>
-              <div className="rounded-[22px] border border-stone-200 bg-white px-4 py-3"><div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Cash received</div><div className="mt-1 text-2xl font-black text-stone-950">{money(paymentSummary.cashReceived, currencySymbol)}</div></div>
-              <div className="rounded-[22px] border border-stone-200 bg-white px-4 py-3"><div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Change due</div><div className={`mt-1 text-2xl font-black ${paymentSummary.changeDue > 0 ? 'text-emerald-700' : 'text-stone-950'}`}>{money(paymentSummary.changeDue, currencySymbol)}</div></div>
+              <div className="rounded-[22px] border border-stone-200 bg-white px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                  Paid total
+                </div>
+                <div className="mt-1 text-2xl font-black text-stone-950">
+                  {money(paymentSummary.totalPaid, currencySymbol)}
+                </div>
+              </div>
+              <div className="rounded-[22px] border border-stone-200 bg-white px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                  Remaining
+                </div>
+                <div
+                  className={`mt-1 text-2xl font-black ${paymentSummary.remainingAmount > 0 ? "text-red-700" : "text-emerald-700"}`}
+                >
+                  {money(paymentSummary.remainingAmount, currencySymbol)}
+                </div>
+              </div>
+              <div className="rounded-[22px] border border-stone-200 bg-white px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                  Cash received
+                </div>
+                <div className="mt-1 text-2xl font-black text-stone-950">
+                  {money(paymentSummary.cashReceived, currencySymbol)}
+                </div>
+              </div>
+              <div className="rounded-[22px] border border-stone-200 bg-white px-4 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                  Change due
+                </div>
+                <div
+                  className={`mt-1 text-2xl font-black ${paymentSummary.changeDue > 0 ? "text-emerald-700" : "text-stone-950"}`}
+                >
+                  {money(paymentSummary.changeDue, currencySymbol)}
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="rounded-[26px] border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(245,245,244,0.96))] p-5 text-sm">
-            <div className="flex justify-between"><span>Subtotal</span><span>{money(subtotal, currencySymbol)}</span></div>
-            <div className="mt-2 flex justify-between"><span>Tax ({taxRate}%)</span><span>{money(taxAmount, currencySymbol)}</span></div>
-            <div className="mt-2 flex justify-between"><span>Manual discount</span><span>-{money(manualDiscount, currencySymbol)}</span></div>
-            <div className="mt-2 flex justify-between"><span>Loyalty discount</span><span>-{money(loyaltyDiscount, currencySymbol)}</span></div>
-            <div className="mt-2 flex justify-between"><span>{isCreditSale ? 'Receivable' : 'Paid'}</span><span>{money(isCreditSale ? total : paymentSummary.totalPaid, currencySymbol)}</span></div>
-            <div className="mt-2 flex justify-between"><span>Change</span><span>{money(paymentSummary.changeDue, currencySymbol)}</span></div>
-            <div className="mt-3 flex justify-between border-t border-stone-200 pt-3 text-lg font-black text-stone-900"><span>Total</span><span>{money(total, currencySymbol)}</span></div>
-            <div className="mt-4 rounded-[22px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600">{cart.length ? paymentError || `${itemCount} item(s) across ${cart.length} line(s) are ready for validation and receipt printing.` : 'Add at least one product before finalizing the sale.'}</div>
+            <div className="flex justify-between">
+              <span>Subtotal</span>
+              <span>{money(subtotal, currencySymbol)}</span>
+            </div>
+            <div className="mt-2 flex justify-between">
+              <span>Tax ({taxRate}%)</span>
+              <span>{money(taxAmount, currencySymbol)}</span>
+            </div>
+            <div className="mt-2 flex justify-between">
+              <span>Manual discount</span>
+              <span>-{money(manualDiscount, currencySymbol)}</span>
+            </div>
+            <div className="mt-2 flex justify-between">
+              <span>Loyalty discount</span>
+              <span>-{money(loyaltyDiscount, currencySymbol)}</span>
+            </div>
+            <div className="mt-2 flex justify-between">
+              <span>{isCreditSale ? "Receivable" : "Paid"}</span>
+              <span>
+                {money(
+                  isCreditSale ? total : paymentSummary.totalPaid,
+                  currencySymbol,
+                )}
+              </span>
+            </div>
+            <div className="mt-2 flex justify-between">
+              <span>Change</span>
+              <span>{money(paymentSummary.changeDue, currencySymbol)}</span>
+            </div>
+            <div className="mt-3 flex justify-between border-t border-stone-200 pt-3 text-lg font-black text-stone-900">
+              <span>Total</span>
+              <span>{money(total, currencySymbol)}</span>
+            </div>
+            <div className="mt-4 rounded-[22px] border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600">
+              {cart.length
+                ? paymentError ||
+                  `${itemCount} item(s) across ${cart.length} line(s) are ready for validation and receipt printing.`
+                : "Add at least one product before finalizing the sale."}
+            </div>
           </div>
 
-          {parkedFeedback ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{parkedFeedback}</div> : null}
-          {error ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+          {parkedFeedback ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {parkedFeedback}
+            </div>
+          ) : null}
+          {error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button type="button" className="flex-1" disabled={!canCompleteSale} onClick={() => void completeSale()}>{loading ? 'Completing sale...' : !isOnline ? 'Queue offline sale' : 'Complete sale'}</Button>
-            <Button type="button" variant="secondary" className="sm:min-w-32" disabled={!cart.length || loading || Boolean(holding)} onClick={() => void saveCheckoutDraft('SAVED_CART')}>{holding === 'SAVED_CART' ? 'Saving cart...' : 'Save cart'}</Button>
-            <Button type="button" variant="secondary" className="sm:min-w-32" disabled={!cart.length || loading || Boolean(holding)} onClick={() => void saveCheckoutDraft('QUOTE')}>{holding === 'QUOTE' ? 'Saving quote...' : 'Save quote'}</Button>
-            <Button type="button" variant="secondary" className="sm:min-w-32" disabled={!cart.length || loading || Boolean(holding)} onClick={requestClearCart}>Clear</Button>
+            <Button
+              type="button"
+              className="flex-1"
+              disabled={!canCompleteSale}
+              onClick={() => void completeSale()}
+            >
+              {loading
+                ? "Completing sale..."
+                : !isOnline
+                  ? "Queue offline sale"
+                  : "Complete sale"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="sm:min-w-32"
+              disabled={!cart.length || loading || Boolean(holding)}
+              onClick={() => void saveCheckoutDraft("SAVED_CART")}
+            >
+              {holding === "SAVED_CART" ? "Saving cart..." : "Save cart"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="sm:min-w-32"
+              disabled={!cart.length || loading || Boolean(holding)}
+              onClick={() => void saveCheckoutDraft("QUOTE")}
+            >
+              {holding === "QUOTE" ? "Saving quote..." : "Save quote"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="sm:min-w-32"
+              disabled={!cart.length || loading || Boolean(holding)}
+              onClick={requestClearCart}
+            >
+              Clear
+            </Button>
           </div>
 
           <div className="rounded-[26px] border border-stone-200 bg-stone-50/85 p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">Saved checkouts</div>
-                <h3 className="mt-2 text-xl font-black text-stone-900">Suspend and resume checkout</h3>
-                <p className="mt-1 text-sm text-stone-500">Saved checkouts keep item snapshots, customer details, and notes for up to 24 hours.</p>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+                  Saved checkouts
+                </div>
+                <h3 className="mt-2 text-xl font-black text-stone-900">
+                  Suspend and resume checkout
+                </h3>
+                <p className="mt-1 text-sm text-stone-500">
+                  Saved checkouts keep item snapshots, customer details, and
+                  notes for up to 24 hours.
+                </p>
               </div>
-              <div className="rounded-[20px] border border-stone-200 bg-white px-4 py-3 text-right"><div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Saved carts & quotes</div><div className="mt-1 text-2xl font-black text-stone-950">{parkedSales.length}</div></div>
+              <div className="rounded-[20px] border border-stone-200 bg-white px-4 py-3 text-right">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                  Saved carts & quotes
+                </div>
+                <div className="mt-1 text-2xl font-black text-stone-950">
+                  {parkedSales.length}
+                </div>
+              </div>
             </div>
             <div className="mt-4 space-y-3">
-              {parkedSales.length ? parkedSales.map((parkedSale) => (
-                <div key={parkedSale.id} className="rounded-[24px] border border-stone-200 bg-white p-4">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Held</span>
-                        <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-600">{parkedSale.itemCount} item(s)</span>
-                        <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${parkedSale.type === 'QUOTE' ? 'border border-sky-200 bg-sky-50 text-sky-700' : 'border border-stone-200 bg-stone-50 text-stone-600'}`}>{parkedSale.type === 'QUOTE' ? 'Quote' : 'Saved cart'}</span>
+              {parkedSales.length ? (
+                parkedSales.map((parkedSale) => (
+                  <div
+                    key={parkedSale.id}
+                    className="rounded-[24px] border border-stone-200 bg-white p-4"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                            Held
+                          </span>
+                          <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-600">
+                            {parkedSale.itemCount} item(s)
+                          </span>
+                          <span
+                            className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${parkedSale.type === "QUOTE" ? "border border-sky-200 bg-sky-50 text-sky-700" : "border border-stone-200 bg-stone-50 text-stone-600"}`}
+                          >
+                            {parkedSale.type === "QUOTE"
+                              ? "Quote"
+                              : "Saved cart"}
+                          </span>
+                        </div>
+                        <div className="mt-3 text-lg font-black text-stone-950">
+                          {money(parkedSale.totalAmount, currencySymbol)}
+                        </div>
+                        <div className="mt-1 text-sm text-stone-500">
+                          {parkedSale.cashierName}
+                          {parkedSale.customerName
+                            ? ` / ${parkedSale.customerName}`
+                            : ""}
+                        </div>
+                        <div className="mt-2 text-xs text-stone-500">
+                          Created {dateTime(parkedSale.createdAt)} / Expires{" "}
+                          {dateTime(parkedSale.expiresAt)}
+                        </div>
+                        {parkedSale.quoteReference ? (
+                          <div className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+                            {parkedSale.quoteReference}
+                          </div>
+                        ) : null}
+                        {parkedSale.title ? (
+                          <div className="mt-2 text-sm font-semibold text-stone-700">
+                            {parkedSale.title}
+                          </div>
+                        ) : null}
+                        {parkedSale.notes ? (
+                          <div className="mt-3 rounded-[18px] border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-600">
+                            {parkedSale.notes}
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="mt-3 text-lg font-black text-stone-950">{money(parkedSale.totalAmount, currencySymbol)}</div>
-                      <div className="mt-1 text-sm text-stone-500">{parkedSale.cashierName}{parkedSale.customerName ? ` / ${parkedSale.customerName}` : ''}</div>
-                      <div className="mt-2 text-xs text-stone-500">Created {dateTime(parkedSale.createdAt)} / Expires {dateTime(parkedSale.expiresAt)}</div>
-                      {parkedSale.quoteReference ? <div className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">{parkedSale.quoteReference}</div> : null}
-                      {parkedSale.title ? <div className="mt-2 text-sm font-semibold text-stone-700">{parkedSale.title}</div> : null}
-                      {parkedSale.notes ? <div className="mt-3 rounded-[18px] border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-600">{parkedSale.notes}</div> : null}
-                    </div>
-                    <div className="min-w-[220px] space-y-2">
-                      <div className="rounded-[18px] border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-500">
-                        {parkedSale.items.map((item) => `${item.qty}x ${item.productName}${item.variantLabel ? ` (${item.variantLabel})` : ''}`).join(', ')}
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-                        <Button type="button" disabled={resumeLoadingId === parkedSale.id || cancelLoadingId === parkedSale.id} onClick={() => void resumeParkedSale(parkedSale)}>{resumeLoadingId === parkedSale.id ? 'Loading...' : parkedSale.type === 'QUOTE' ? 'Load quote' : 'Resume'}</Button>
-                        <Button type="button" variant="danger" disabled={resumeLoadingId === parkedSale.id || cancelLoadingId === parkedSale.id} onClick={() => void cancelParkedSale(parkedSale)}>{cancelLoadingId === parkedSale.id ? 'Cancelling...' : 'Cancel'}</Button>
+                      <div className="min-w-[220px] space-y-2">
+                        <div className="rounded-[18px] border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-500">
+                          {parkedSale.items
+                            .map(
+                              (item) =>
+                                `${item.qty}x ${item.productName}${item.variantLabel ? ` (${item.variantLabel})` : ""}`,
+                            )
+                            .join(", ")}
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                          <Button
+                            type="button"
+                            disabled={
+                              resumeLoadingId === parkedSale.id ||
+                              cancelLoadingId === parkedSale.id
+                            }
+                            onClick={() => void resumeParkedSale(parkedSale)}
+                          >
+                            {resumeLoadingId === parkedSale.id
+                              ? "Loading..."
+                              : parkedSale.type === "QUOTE"
+                                ? "Load quote"
+                                : "Resume"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            disabled={
+                              resumeLoadingId === parkedSale.id ||
+                              cancelLoadingId === parkedSale.id
+                            }
+                            onClick={() => void cancelParkedSale(parkedSale)}
+                          >
+                            {cancelLoadingId === parkedSale.id
+                              ? "Cancelling..."
+                              : "Cancel"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
+                ))
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-stone-300 bg-white px-4 py-5 text-sm text-stone-500">
+                  No saved carts or quotes right now.
                 </div>
-              )) : <div className="rounded-[24px] border border-dashed border-stone-300 bg-white px-4 py-5 text-sm text-stone-500">No saved carts or quotes right now.</div>}
+              )}
             </div>
           </div>
         </Card>
