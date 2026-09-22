@@ -54,8 +54,9 @@ export default async function ProtectedLayout({
       />
       <main className="flex-1 overflow-y-auto overflow-x-hidden relative">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[linear-gradient(180deg,rgba(255,255,255,0.6),transparent)]" />
-        <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6 lg:px-8 lg:py-6 relative z-10">
-          <div className="mb-4 flex justify-end">
+        <div className="mx-auto max-w-375 px-4 py-4 sm:px-6 lg:px-8 lg:py-6 relative z-10">
+          <div className="mb-6 flex items-center justify-end gap-3">
+            <CommandPalette role={role} />
             <NotificationsBell
               initialNotifications={notifications.map((notification) => ({
                 id: notification.id,
@@ -67,7 +68,7 @@ export default async function ProtectedLayout({
               }))}
             />
           </div>
-          <CommandPalette role={role} />
+
           <div className="relative rounded-[34px] border border-white/70 bg-white/28 p-2 shadow-[0_28px_70px_-48px_rgba(28,25,23,0.28)] backdrop-blur-[2px] sm:p-3">
             <div className="rounded-[30px] bg-white/20 p-1 sm:p-2">
               {children}

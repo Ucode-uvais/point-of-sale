@@ -1,10 +1,11 @@
-'use client';
+"use client";
 
-import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
-import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/payments';
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
+import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
+import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/payments";
 import {
   DEFAULT_PAYMENT_METHODS,
   DEFAULT_TIMEZONE,
@@ -13,16 +14,24 @@ import {
   PRINTER_CONNECTION_OPTIONS,
   type PrinterConnectionValue,
   TAX_MODE_OPTIONS,
-  type TaxModeValue
-} from '@/lib/shop-settings';
-import { SHOP_TYPE_OPTIONS, getShopTypeDefaults, type SupportedShopType } from '@/lib/shop-config';
+  type TaxModeValue,
+} from "@/lib/shop-settings";
+import {
+  SHOP_TYPE_OPTIONS,
+  getShopTypeDefaults,
+  type SupportedShopType,
+} from "@/lib/shop-config";
 
 function createCategoryRows(shopType: SupportedShopType) {
-  return getShopTypeDefaults(shopType).starterCategories.map((name) => ({ name }));
+  return getShopTypeDefaults(shopType).starterCategories.map((name) => ({
+    name,
+  }));
 }
 
 function createSupplierRows(shopType: SupportedShopType) {
-  return getShopTypeDefaults(shopType).starterSuppliers.map((supplier) => ({ ...supplier }));
+  return getShopTypeDefaults(shopType).starterSuppliers.map((supplier) => ({
+    ...supplier,
+  }));
 }
 
 function createProductRows(shopType: SupportedShopType) {
@@ -31,51 +40,71 @@ function createProductRows(shopType: SupportedShopType) {
     cost: String(product.cost),
     price: String(product.price),
     stockQty: String(product.stockQty),
-    reorderPoint: String(product.reorderPoint)
+    reorderPoint: String(product.reorderPoint),
   }));
+}
+
+export function getListItemKey(
+  type: "category" | "supplier" | "product",
+  index: number,
+) {
+  return `${type}-${index}`;
 }
 
 export default function OnboardPage() {
   const router = useRouter();
+  const { update: updateSession } = useSession();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [form, setForm] = useState({
-    shopName: '',
-    legalBusinessName: '',
-    posType: 'GENERAL_RETAIL' as SupportedShopType,
-    phone: '',
-    email: '',
-    address: '',
-    taxId: '',
+    shopName: "",
+    legalBusinessName: "",
+    posType: "GENERAL_RETAIL" as SupportedShopType,
+    phone: "",
+    email: "",
+    address: "",
+    taxId: "",
     timezone: DEFAULT_TIMEZONE,
-    currencyCode: 'PHP',
-    currencySymbol: '₱',
-    taxMode: 'EXCLUSIVE' as TaxModeValue,
-    taxRate: '12',
-    receiptHeader: 'Thank you for shopping with us!',
-    receiptFooter: 'Please come again.',
-    receiptWidth: '80mm' as '58mm' | '80mm',
-    lowStockThreshold: String(getShopTypeDefaults('GENERAL_RETAIL').lowStockThreshold),
+    currencyCode: "PHP",
+    currencySymbol: "₱",
+    taxMode: "EXCLUSIVE" as TaxModeValue,
+    taxRate: "12",
+    receiptHeader: "Thank you for shopping with us!",
+    receiptFooter: "Please come again.",
+    receiptWidth: "80mm" as "58mm" | "80mm",
+    lowStockThreshold: String(
+      getShopTypeDefaults("GENERAL_RETAIL").lowStockThreshold,
+    ),
     defaultPaymentMethods: [...DEFAULT_PAYMENT_METHODS] as PaymentMethod[],
     openingFloatRequired: true,
-    openingFloatAmount: '0',
-    printerName: '',
-    printerConnection: 'MANUAL' as PrinterConnectionValue,
-    barcodeScannerNotes: 'Scan barcode or SKU, then press Enter to add the item quickly at checkout.'
+    openingFloatAmount: "0",
+    printerName: "",
+    printerConnection: "MANUAL" as PrinterConnectionValue,
+    barcodeScannerNotes:
+      "Scan barcode or SKU, then press Enter to add the item quickly at checkout.",
   });
-  const [categories, setCategories] = useState(() => createCategoryRows('GENERAL_RETAIL'));
-  const [suppliers, setSuppliers] = useState(() => createSupplierRows('GENERAL_RETAIL'));
-  const [products, setProducts] = useState(() => createProductRows('GENERAL_RETAIL'));
+  const [categories, setCategories] = useState(() =>
+    createCategoryRows("GENERAL_RETAIL"),
+  );
+  const [suppliers, setSuppliers] = useState(() =>
+    createSupplierRows("GENERAL_RETAIL"),
+  );
+  const [products, setProducts] = useState(() =>
+    createProductRows("GENERAL_RETAIL"),
+  );
 
-  const selectedShopType = useMemo(() => getShopTypeDefaults(form.posType), [form.posType]);
+  const selectedShopType = useMemo(
+    () => getShopTypeDefaults(form.posType),
+    [form.posType],
+  );
 
   function applyShopType(shopType: SupportedShopType) {
     const defaults = getShopTypeDefaults(shopType);
     setForm((current) => ({
       ...current,
       posType: shopType,
-      lowStockThreshold: String(defaults.lowStockThreshold)
+      lowStockThreshold: String(defaults.lowStockThreshold),
     }));
     setCategories(createCategoryRows(shopType));
     setSuppliers(createSupplierRows(shopType));
@@ -90,14 +119,19 @@ export default function OnboardPage() {
 
       return {
         ...current,
-        defaultPaymentMethods: nextMethods.length ? nextMethods : current.defaultPaymentMethods
+        defaultPaymentMethods: nextMethods.length
+          ? nextMethods
+          : current.defaultPaymentMethods,
       };
     });
   }
 
   function canContinue() {
     if (step === 1) {
-      return form.shopName.trim().length >= 2 && form.legalBusinessName.trim().length >= 2;
+      return (
+        form.shopName.trim().length >= 2 &&
+        form.legalBusinessName.trim().length >= 2
+      );
     }
 
     return true;
@@ -105,11 +139,11 @@ export default function OnboardPage() {
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError('');
+    setError("");
 
     if (step < 4) {
       if (!canContinue()) {
-        setError('Please complete the required fields.');
+        setError("Please complete the required fields.");
         return;
       }
 
@@ -118,60 +152,99 @@ export default function OnboardPage() {
     }
 
     setLoading(true);
-    const response = await fetch('/api/onboard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        taxRate: Number(form.taxRate),
-        lowStockThreshold: Number(form.lowStockThreshold),
-        openingFloatAmount: Number(form.openingFloatAmount),
-        categories: categories.filter((item) => item.name.trim()),
-        suppliers: suppliers.filter((item) => item.name.trim()),
-        products: products.filter((item) => item.name.trim()).map((item) => ({
-          ...item,
-          cost: Number(item.cost),
-          price: Number(item.price),
-          stockQty: Number(item.stockQty),
-          reorderPoint: Number(item.reorderPoint)
-        }))
-      })
-    });
 
-    const data = await response.json().catch(() => ({ error: 'Unable to complete onboarding.' }));
-    setLoading(false);
+    try {
+      const response = await fetch("/api/onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          taxRate: Number(form.taxRate),
+          lowStockThreshold: Number(form.lowStockThreshold),
+          openingFloatAmount: Number(form.openingFloatAmount),
+          categories: categories.filter((item) => item.name.trim()),
+          suppliers: suppliers.filter((item) => item.name.trim()),
+          products: products
+            .filter((item) => item.name.trim())
+            .map((item) => ({
+              ...item,
+              cost: Number(item.cost),
+              price: Number(item.price),
+              stockQty: Number(item.stockQty),
+              reorderPoint: Number(item.reorderPoint),
+            })),
+        }),
+      });
 
-    if (!response.ok) {
-      setError(data.error ?? 'Unable to complete onboarding.');
-      return;
+      const data = await response
+        .json()
+        .catch(() => ({ error: "Unable to complete onboarding." }));
+
+      if (!response.ok) {
+        if (response.status === 401 && data.code === "SESSION_USER_NOT_FOUND") {
+          // Clear the stale Auth.js cookie so the next sign-in creates a JWT
+          // for a user that exists in the currently configured database.
+          await signOut({ redirect: false });
+          router.replace("/login?error=session-invalid");
+          router.refresh();
+          return;
+        }
+
+        setError(data.error ?? "Unable to complete onboarding.");
+        return;
+      }
+
+      if (data.shop?.id) {
+        // The onboarding route updates User.defaultShopId in PostgreSQL. Keep
+        // the stateless JWT session in sync as well so client components do not
+        // keep seeing the pre-onboarding null shop id / fallback role.
+        await updateSession({
+          user: {
+            role: "ADMIN",
+            defaultShopId: data.shop.id,
+          },
+        });
+      }
+
+      router.replace("/dashboard");
+      router.refresh();
+    } catch {
+      setError("Unable to reach the server. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    router.push('/dashboard');
-    router.refresh();
   }
 
   return (
     <main className="min-h-screen bg-stone-50 py-10">
       <div className="mx-auto max-w-6xl px-6">
         <div className="mb-8">
-          <div className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600">Business setup</div>
-          <h1 className="mt-2 text-4xl font-black text-stone-900">Set up your business and first branch.</h1>
+          <div className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600">
+            Business setup
+          </div>
+          <h1 className="mt-2 text-4xl font-black text-stone-900">
+            Set up your business and first branch.
+          </h1>
           <p className="mt-2 text-sm text-stone-500">
-            We will configure the legal business identity, branch defaults, receipt setup, checkout behavior, and starter catalog in one practical flow.
+            We will configure the legal business identity, branch defaults,
+            receipt setup, checkout behavior, and starter catalog in one
+            practical flow.
           </p>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-3 text-sm">
           {[
-            'Branch identity',
-            'Operations setup',
-            'Starter lists',
-            'Starter products'
+            "Branch identity",
+            "Operations setup",
+            "Starter lists",
+            "Starter products",
           ].map((label, index) => (
             <div
               key={label}
               className={`rounded-full px-4 py-2 font-semibold ${
-                step >= index + 1 ? 'bg-emerald-600 text-white' : 'border border-stone-200 bg-white text-stone-500'
+                step >= index + 1
+                  ? "bg-emerald-600 text-white"
+                  : "border border-stone-200 bg-white text-stone-500"
               }`}
             >
               Step {index + 1}: {label}
@@ -179,73 +252,185 @@ export default function OnboardPage() {
           ))}
         </div>
 
-        <form onSubmit={onSubmit} className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+        <form
+          onSubmit={onSubmit}
+          className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm"
+        >
           {step === 1 ? (
             <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Branch / store name</label>
-                  <Input value={form.shopName} onChange={(event) => setForm((current) => ({ ...current, shopName: event.target.value }))} required />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Branch / store name
+                  </label>
+                  <Input
+                    value={form.shopName}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        shopName: event.target.value,
+                      }))
+                    }
+                    required
+                  />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Legal business name</label>
-                  <Input value={form.legalBusinessName} onChange={(event) => setForm((current) => ({ ...current, legalBusinessName: event.target.value }))} required />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Legal business name
+                  </label>
+                  <Input
+                    value={form.legalBusinessName}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        legalBusinessName: event.target.value,
+                      }))
+                    }
+                    required
+                  />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Phone</label>
-                  <Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Phone
+                  </label>
+                  <Input
+                    value={form.phone}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        phone: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Email</label>
-                  <Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Email
+                  </label>
+                  <Input
+                    type="email"
+                    value={form.email}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Tax ID / permit</label>
-                  <Input value={form.taxId} onChange={(event) => setForm((current) => ({ ...current, taxId: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Tax ID / permit
+                  </label>
+                  <Input
+                    value={form.taxId}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        taxId: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Timezone</label>
-                  <Input value={form.timezone} onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Timezone
+                  </label>
+                  <Input
+                    value={form.timezone}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        timezone: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-semibold">Address</label>
-                  <Input value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Address
+                  </label>
+                  <Input
+                    value={form.address}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        address: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
               </div>
 
               <div>
-                <div className="mb-3 text-sm font-semibold text-stone-900">Business type</div>
+                <div className="mb-3 text-sm font-semibold text-stone-900">
+                  Business type
+                </div>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {SHOP_TYPE_OPTIONS.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => applyShopType(option.value)}
-                      className={`rounded-[24px] border p-4 text-left transition ${
+                      className={`rounded-3xl border p-4 text-left transition ${
                         form.posType === option.value
-                          ? 'border-emerald-300 bg-emerald-50'
-                          : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50'
+                          ? "border-emerald-300 bg-emerald-50"
+                          : "border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50"
                       }`}
                     >
-                      <div className="text-base font-black text-stone-950">{option.label}</div>
-                      <div className="mt-2 text-sm leading-6 text-stone-500">{option.description}</div>
+                      <div className="text-base font-black text-stone-950">
+                        {option.label}
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-stone-500">
+                        {option.description}
+                      </div>
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                <div className="rounded-[24px] border border-stone-200 bg-stone-50 px-5 py-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Inventory defaults</div>
+                <div className="rounded-3xl border border-stone-200 bg-stone-50 px-5 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                    Inventory defaults
+                  </div>
                   <div className="mt-3 space-y-2 text-sm text-stone-600">
-                    <div>Batch tracking: <span className="font-semibold text-stone-900">{selectedShopType.batchTrackingEnabled ? 'Enabled' : 'Optional'}</span></div>
-                    <div>Expiry tracking: <span className="font-semibold text-stone-900">{selectedShopType.expiryTrackingEnabled ? 'Enabled' : 'Optional'}</span></div>
-                    <div>FEFO display: <span className="font-semibold text-stone-900">{selectedShopType.fefoEnabled ? 'Emphasized' : 'Available'}</span></div>
-                    <div>Expiry alerts: <span className="font-semibold text-stone-900">{selectedShopType.expiryAlertDays} day(s)</span></div>
+                    <div>
+                      Batch tracking:{" "}
+                      <span className="font-semibold text-stone-900">
+                        {selectedShopType.batchTrackingEnabled
+                          ? "Enabled"
+                          : "Optional"}
+                      </span>
+                    </div>
+                    <div>
+                      Expiry tracking:{" "}
+                      <span className="font-semibold text-stone-900">
+                        {selectedShopType.expiryTrackingEnabled
+                          ? "Enabled"
+                          : "Optional"}
+                      </span>
+                    </div>
+                    <div>
+                      FEFO display:{" "}
+                      <span className="font-semibold text-stone-900">
+                        {selectedShopType.fefoEnabled
+                          ? "Emphasized"
+                          : "Available"}
+                      </span>
+                    </div>
+                    <div>
+                      Expiry alerts:{" "}
+                      <span className="font-semibold text-stone-900">
+                        {selectedShopType.expiryAlertDays} day(s)
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <div className="rounded-[24px] border border-stone-200 bg-stone-50 px-5 py-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Starter guidance</div>
+                <div className="rounded-3xl border border-stone-200 bg-stone-50 px-5 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                    Starter guidance
+                  </div>
                   <div className="mt-3 space-y-2 text-sm text-stone-600">
                     {selectedShopType.hints.map((hint) => (
                       <div key={hint}>{hint}</div>
@@ -260,19 +445,46 @@ export default function OnboardPage() {
             <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Currency code</label>
-                  <Input value={form.currencyCode} onChange={(event) => setForm((current) => ({ ...current, currencyCode: event.target.value.toUpperCase() }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Currency code
+                  </label>
+                  <Input
+                    value={form.currencyCode}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        currencyCode: event.target.value.toUpperCase(),
+                      }))
+                    }
+                  />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Currency symbol</label>
-                  <Input value={form.currencySymbol} onChange={(event) => setForm((current) => ({ ...current, currencySymbol: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Currency symbol
+                  </label>
+                  <Input
+                    value={form.currencySymbol}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        currencySymbol: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Tax mode</label>
+                  <label className="mb-2 block text-sm font-semibold">
+                    Tax mode
+                  </label>
                   <select
                     className="h-11 w-full rounded-2xl border border-stone-200 bg-white px-4 text-sm"
                     value={form.taxMode}
-                    onChange={(event) => setForm((current) => ({ ...current, taxMode: event.target.value as TaxModeValue }))}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        taxMode: event.target.value as TaxModeValue,
+                      }))
+                    }
                   >
                     {TAX_MODE_OPTIONS.map((entry) => (
                       <option key={entry} value={entry}>
@@ -282,42 +494,97 @@ export default function OnboardPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Tax rate (%)</label>
-                  <Input type="number" step="0.01" value={form.taxRate} onChange={(event) => setForm((current) => ({ ...current, taxRate: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Tax rate (%)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.taxRate}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        taxRate: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Low stock threshold</label>
-                  <Input type="number" value={form.lowStockThreshold} onChange={(event) => setForm((current) => ({ ...current, lowStockThreshold: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Low stock threshold
+                  </label>
+                  <Input
+                    type="number"
+                    value={form.lowStockThreshold}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        lowStockThreshold: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Receipt width</label>
+                  <label className="mb-2 block text-sm font-semibold">
+                    Receipt width
+                  </label>
                   <select
                     className="h-11 w-full rounded-2xl border border-stone-200 bg-white px-4 text-sm"
                     value={form.receiptWidth}
-                    onChange={(event) => setForm((current) => ({ ...current, receiptWidth: event.target.value as '58mm' | '80mm' }))}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        receiptWidth: event.target.value as "58mm" | "80mm",
+                      }))
+                    }
                   >
                     <option value="58mm">58mm thermal roll</option>
                     <option value="80mm">80mm thermal roll</option>
                   </select>
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Required opening float</label>
-                  <Input type="number" step="0.01" value={form.openingFloatAmount} onChange={(event) => setForm((current) => ({ ...current, openingFloatAmount: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Required opening float
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.openingFloatAmount}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        openingFloatAmount: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <label className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
                   <input
                     type="checkbox"
                     checked={form.openingFloatRequired}
-                    onChange={(event) => setForm((current) => ({ ...current, openingFloatRequired: event.target.checked }))}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        openingFloatRequired: event.target.checked,
+                      }))
+                    }
                   />
                   Require opening float before a register session starts
                 </label>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Printer connection</label>
+                  <label className="mb-2 block text-sm font-semibold">
+                    Printer connection
+                  </label>
                   <select
                     className="h-11 w-full rounded-2xl border border-stone-200 bg-white px-4 text-sm"
                     value={form.printerConnection}
-                    onChange={(event) => setForm((current) => ({ ...current, printerConnection: event.target.value as PrinterConnectionValue }))}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        printerConnection: event.target
+                          .value as PrinterConnectionValue,
+                      }))
+                    }
                   >
                     {PRINTER_CONNECTION_OPTIONS.map((entry) => (
                       <option key={entry} value={entry}>
@@ -327,29 +594,68 @@ export default function OnboardPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">Printer name</label>
-                  <Input value={form.printerName} onChange={(event) => setForm((current) => ({ ...current, printerName: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Printer name
+                  </label>
+                  <Input
+                    value={form.printerName}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        printerName: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-semibold">Receipt header</label>
-                  <Input value={form.receiptHeader} onChange={(event) => setForm((current) => ({ ...current, receiptHeader: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Receipt header
+                  </label>
+                  <Input
+                    value={form.receiptHeader}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        receiptHeader: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-semibold">Receipt footer</label>
-                  <Input value={form.receiptFooter} onChange={(event) => setForm((current) => ({ ...current, receiptFooter: event.target.value }))} />
+                  <label className="mb-2 block text-sm font-semibold">
+                    Receipt footer
+                  </label>
+                  <Input
+                    value={form.receiptFooter}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        receiptFooter: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-semibold">Barcode scanner notes</label>
+                  <label className="mb-2 block text-sm font-semibold">
+                    Barcode scanner notes
+                  </label>
                   <textarea
                     className="min-h-24 w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900"
                     value={form.barcodeScannerNotes}
-                    onChange={(event) => setForm((current) => ({ ...current, barcodeScannerNotes: event.target.value }))}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        barcodeScannerNotes: event.target.value,
+                      }))
+                    }
                   />
                 </div>
               </div>
 
               <div>
-                <div className="mb-3 text-sm font-semibold text-stone-900">Default payment methods</div>
+                <div className="mb-3 text-sm font-semibold text-stone-900">
+                  Default payment methods
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {PAYMENT_METHODS.map((method) => {
                     const active = form.defaultPaymentMethods.includes(method);
@@ -360,8 +666,8 @@ export default function OnboardPage() {
                         onClick={() => togglePaymentMethod(method)}
                         className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                           active
-                            ? 'border-emerald-600 bg-emerald-600 text-white'
-                            : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50'
+                            ? "border-emerald-600 bg-emerald-600 text-white"
+                            : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"
                         }`}
                       >
                         {method}
@@ -376,57 +682,293 @@ export default function OnboardPage() {
           {step === 3 ? (
             <div className="space-y-6">
               <div>
-                <div className="mb-3 text-lg font-black text-stone-900">Starter categories</div>
+                <div className="mb-3 text-lg font-black text-stone-900">
+                  Starter categories
+                </div>
                 <div className="space-y-3">
                   {categories.map((item, index) => (
-                    <div key={`${item.name}-${index}`} className="flex gap-3">
-                      <Input value={item.name} onChange={(event) => setCategories((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, name: event.target.value } : entry))} />
-                      <Button type="button" variant="secondary" onClick={() => setCategories((current) => current.filter((_, entryIndex) => entryIndex !== index))}>Remove</Button>
+                    <div
+                      key={getListItemKey("category", index)}
+                      className="flex gap-3"
+                    >
+                      <Input
+                        value={item.name}
+                        onChange={(event) =>
+                          setCategories((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, name: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() =>
+                          setCategories((current) =>
+                            current.filter(
+                              (_, entryIndex) => entryIndex !== index,
+                            ),
+                          )
+                        }
+                      >
+                        Remove
+                      </Button>
                     </div>
                   ))}
                 </div>
-                <Button type="button" variant="secondary" className="mt-3" onClick={() => setCategories((current) => [...current, { name: '' }])}>Add category</Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-3"
+                  onClick={() =>
+                    setCategories((current) => [...current, { name: "" }])
+                  }
+                >
+                  Add category
+                </Button>
               </div>
 
               <div>
-                <div className="mb-3 text-lg font-black text-stone-900">Starter suppliers</div>
+                <div className="mb-3 text-lg font-black text-stone-900">
+                  Starter suppliers
+                </div>
                 <div className="space-y-3">
                   {suppliers.map((item, index) => (
-                    <div key={`${item.name}-${index}`} className="grid gap-3 md:grid-cols-3">
-                      <Input placeholder="Supplier name" value={item.name} onChange={(event) => setSuppliers((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, name: event.target.value } : entry))} />
-                      <Input placeholder="Contact name" value={item.contactName} onChange={(event) => setSuppliers((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, contactName: event.target.value } : entry))} />
+                    <div
+                      key={getListItemKey("supplier", index)}
+                      className="grid gap-3 md:grid-cols-3"
+                    >
+                      <Input
+                        placeholder="Supplier name"
+                        value={item.name}
+                        onChange={(event) =>
+                          setSuppliers((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, name: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        placeholder="Contact name"
+                        value={item.contactName}
+                        onChange={(event) =>
+                          setSuppliers((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, contactName: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
                       <div className="flex gap-3">
-                        <Input placeholder="Phone" value={item.phone} onChange={(event) => setSuppliers((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, phone: event.target.value } : entry))} />
-                        <Button type="button" variant="secondary" onClick={() => setSuppliers((current) => current.filter((_, entryIndex) => entryIndex !== index))}>Remove</Button>
+                        <Input
+                          placeholder="Phone"
+                          value={item.phone}
+                          onChange={(event) =>
+                            setSuppliers((current) =>
+                              current.map((entry, entryIndex) =>
+                                entryIndex === index
+                                  ? { ...entry, phone: event.target.value }
+                                  : entry,
+                              ),
+                            )
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() =>
+                            setSuppliers((current) =>
+                              current.filter(
+                                (_, entryIndex) => entryIndex !== index,
+                              ),
+                            )
+                          }
+                        >
+                          Remove
+                        </Button>
                       </div>
                     </div>
                   ))}
                 </div>
-                <Button type="button" variant="secondary" className="mt-3" onClick={() => setSuppliers((current) => [...current, { name: '', contactName: '', phone: '' }])}>Add supplier</Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-3"
+                  onClick={() =>
+                    setSuppliers((current) => [
+                      ...current,
+                      { name: "", contactName: "", phone: "" },
+                    ])
+                  }
+                >
+                  Add supplier
+                </Button>
               </div>
             </div>
           ) : null}
 
           {step === 4 ? (
             <div>
-              <div className="mb-3 text-lg font-black text-stone-900">Starter products</div>
+              <div className="mb-3 text-lg font-black text-stone-900">
+                Starter products
+              </div>
               <div className="mb-4 rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-                Shop type defaults: batch tracking <span className="font-semibold text-stone-900">{selectedShopType.batchTrackingEnabled ? 'enabled' : 'optional'}</span>, expiry tracking <span className="font-semibold text-stone-900">{selectedShopType.expiryTrackingEnabled ? 'enabled' : 'optional'}</span>.
+                Shop type defaults: batch tracking{" "}
+                <span className="font-semibold text-stone-900">
+                  {selectedShopType.batchTrackingEnabled
+                    ? "enabled"
+                    : "optional"}
+                </span>
+                , expiry tracking{" "}
+                <span className="font-semibold text-stone-900">
+                  {selectedShopType.expiryTrackingEnabled
+                    ? "enabled"
+                    : "optional"}
+                </span>
+                .
               </div>
               <div className="space-y-3">
                 {products.map((item, index) => (
-                  <div key={`${item.name}-${index}`} className="rounded-[24px] border border-stone-200 bg-stone-50/70 p-4">
+                  <div
+                    key={getListItemKey("product", index)}
+                    className="rounded-3xl border border-stone-200 bg-stone-50/70 p-4"
+                  >
                     <div className="grid gap-3 md:grid-cols-4">
-                      <Input placeholder="Name" value={item.name} onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, name: event.target.value } : entry))} />
-                      <Input placeholder="Category name" value={item.categoryName} onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, categoryName: event.target.value } : entry))} />
-                      <Input placeholder="SKU" value={item.sku} onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, sku: event.target.value } : entry))} />
-                      <Input placeholder="Barcode" value={item.barcode} onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, barcode: event.target.value } : entry))} />
-                      <Input type="number" step="0.01" placeholder="Cost" value={item.cost} onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, cost: event.target.value } : entry))} />
-                      <Input type="number" step="0.01" placeholder="Price" value={item.price} onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, price: event.target.value } : entry))} />
-                      <Input type="number" placeholder="Opening stock" value={item.stockQty} onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, stockQty: event.target.value } : entry))} />
+                      <Input
+                        placeholder="Name"
+                        value={item.name}
+                        onChange={(event) =>
+                          setProducts((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, name: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        placeholder="Category name"
+                        value={item.categoryName}
+                        onChange={(event) =>
+                          setProducts((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, categoryName: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        placeholder="SKU"
+                        value={item.sku}
+                        onChange={(event) =>
+                          setProducts((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, sku: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        placeholder="Barcode"
+                        value={item.barcode}
+                        onChange={(event) =>
+                          setProducts((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, barcode: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="Cost"
+                        value={item.cost}
+                        onChange={(event) =>
+                          setProducts((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, cost: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="Price"
+                        value={item.price}
+                        onChange={(event) =>
+                          setProducts((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, price: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Opening stock"
+                        value={item.stockQty}
+                        onChange={(event) =>
+                          setProducts((current) =>
+                            current.map((entry, entryIndex) =>
+                              entryIndex === index
+                                ? { ...entry, stockQty: event.target.value }
+                                : entry,
+                            ),
+                          )
+                        }
+                      />
                       <div className="flex gap-3">
-                        <Input type="number" placeholder="Reorder level" value={item.reorderPoint} onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, reorderPoint: event.target.value } : entry))} />
-                        <Button type="button" variant="secondary" onClick={() => setProducts((current) => current.filter((_, entryIndex) => entryIndex !== index))}>Remove</Button>
+                        <Input
+                          type="number"
+                          placeholder="Reorder level"
+                          value={item.reorderPoint}
+                          onChange={(event) =>
+                            setProducts((current) =>
+                              current.map((entry, entryIndex) =>
+                                entryIndex === index
+                                  ? {
+                                      ...entry,
+                                      reorderPoint: event.target.value,
+                                    }
+                                  : entry,
+                              ),
+                            )
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() =>
+                            setProducts((current) =>
+                              current.filter(
+                                (_, entryIndex) => entryIndex !== index,
+                              ),
+                            )
+                          }
+                        >
+                          Remove
+                        </Button>
                       </div>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-6 text-sm text-stone-600">
@@ -434,7 +976,21 @@ export default function OnboardPage() {
                         <input
                           type="checkbox"
                           checked={item.trackBatches}
-                          onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, trackBatches: event.target.checked, trackExpiry: event.target.checked ? entry.trackExpiry : false } : entry))}
+                          onChange={(event) =>
+                            setProducts((current) =>
+                              current.map((entry, entryIndex) =>
+                                entryIndex === index
+                                  ? {
+                                      ...entry,
+                                      trackBatches: event.target.checked,
+                                      trackExpiry: event.target.checked
+                                        ? entry.trackExpiry
+                                        : false,
+                                    }
+                                  : entry,
+                              ),
+                            )
+                          }
                         />
                         Track batches
                       </label>
@@ -442,7 +998,21 @@ export default function OnboardPage() {
                         <input
                           type="checkbox"
                           checked={item.trackExpiry}
-                          onChange={(event) => setProducts((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, trackExpiry: event.target.checked, trackBatches: event.target.checked ? true : entry.trackBatches } : entry))}
+                          onChange={(event) =>
+                            setProducts((current) =>
+                              current.map((entry, entryIndex) =>
+                                entryIndex === index
+                                  ? {
+                                      ...entry,
+                                      trackExpiry: event.target.checked,
+                                      trackBatches: event.target.checked
+                                        ? true
+                                        : entry.trackBatches,
+                                    }
+                                  : entry,
+                              ),
+                            )
+                          }
                         />
                         Track expiry
                       </label>
@@ -458,17 +1028,17 @@ export default function OnboardPage() {
                   setProducts((current) => [
                     ...current,
                     {
-                      name: '',
-                      categoryName: '',
-                      sku: '',
-                      barcode: '',
-                      cost: '0',
-                      price: '0',
-                      stockQty: '0',
+                      name: "",
+                      categoryName: "",
+                      sku: "",
+                      barcode: "",
+                      cost: "0",
+                      price: "0",
+                      stockQty: "0",
                       reorderPoint: String(selectedShopType.lowStockThreshold),
                       trackBatches: selectedShopType.batchTrackingEnabled,
-                      trackExpiry: selectedShopType.expiryTrackingEnabled
-                    }
+                      trackExpiry: selectedShopType.expiryTrackingEnabled,
+                    },
                   ])
                 }
               >
@@ -477,11 +1047,28 @@ export default function OnboardPage() {
             </div>
           ) : null}
 
-          {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+          {error ? (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
 
           <div className="mt-6 flex flex-wrap justify-between gap-3">
-            <Button type="button" variant="secondary" onClick={() => setStep((value) => Math.max(1, value - 1))} disabled={step === 1}>Back</Button>
-            <Button type="submit" disabled={loading}>{loading ? 'Finishing setup...' : step === 4 ? 'Finish setup' : 'Continue'}</Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setStep((value) => Math.max(1, value - 1))}
+              disabled={step === 1}
+            >
+              Back
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading
+                ? "Finishing setup..."
+                : step === 4
+                  ? "Finish setup"
+                  : "Continue"}
+            </Button>
           </div>
         </form>
       </div>

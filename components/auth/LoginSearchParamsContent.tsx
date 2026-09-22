@@ -1,15 +1,16 @@
-'use client';
+"use client";
 
-import { useSearchParams } from 'next/navigation';
-import LoginForm from '@/components/auth/LoginForm';
+import { useSearchParams } from "next/navigation";
+import LoginForm from "@/components/auth/LoginForm";
 
 export default function LoginSearchParamsContent() {
   const searchParams = useSearchParams();
 
   return (
     <LoginForm
-      inactiveAccess={searchParams.get('error') === 'shop-access-lost'}
-      callbackUrl={searchParams.get('callbackUrl')}
+      inactiveAccess={searchParams.get("error") === "shop-access-lost"}
+      sessionInvalid={searchParams.get("error") === "session-invalid"}
+      callbackUrl={searchParams.get("callbackUrl")}
     />
   );
 }

@@ -32,6 +32,8 @@ import {
   UserCircle,
   LogOut,
   ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -311,11 +313,20 @@ const ShopHeader = ({
   switchingShop,
   switchError,
 }: any) => {
-  const { open } = useSidebar();
+  const { open, setOpen } = useSidebar();
+
+  const hasMultipleShops = availableShops.length > 1;
 
   if (!open) {
     return (
-      <div className="flex justify-center py-2">
+      <div className="flex flex-col items-center gap-4 py-2">
+        <button
+          onClick={() => setOpen(true)}
+          className="hidden md:inline-flex h-10 w-10 items-center justify-center rounded-xl text-stone-500 hover:bg-stone-100 hover:text-stone-900 transition-colors focus:outline-none"
+          aria-label="Open sidebar"
+        >
+          <PanelLeftOpen className="h-5 w-5 text-black" />
+        </button>
         <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-lg font-black text-white shadow-sm">
           V
         </div>
@@ -323,26 +334,33 @@ const ShopHeader = ({
     );
   }
 
-  const hasMultipleShops = availableShops.length > 1;
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm"
     >
-      <div className="flex items-center gap-3">
-        <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-lg font-black text-white shadow-sm">
-          V
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[15px] font-black text-stone-950">
-            {shopName}
+      <div className="mb-4 flex items-start justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-lg font-black text-white shadow-sm">
+            V
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-700">
-            {role}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[15px] font-black text-stone-950">
+              {shopName}
+            </div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-700">
+              {role}
+            </div>
           </div>
         </div>
+        <button
+          onClick={() => setOpen(false)}
+          className="hidden md:inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-900 transition-colors focus:outline-none"
+          aria-label="Close sidebar"
+        >
+          <PanelLeftClose className="h-5 w-5 text-black" />
+        </button>
       </div>
 
       <div className="mt-4">
@@ -407,6 +425,7 @@ const SidebarAccordion = ({
     <div className="flex flex-col gap-1">
       <button
         onClick={toggle}
+        title={!open ? item.label : undefined}
         className={`group flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-emerald-50/60 ${
           isActiveChild
             ? "bg-emerald-50 text-emerald-800 border border-emerald-100/50"
@@ -543,7 +562,7 @@ function SidebarContent({
 
   return (
     <>
-      <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden no-scrollbar">
+      <div className="flex flex-1 flex-col overflow-y-auto no-scrollbar">
         <ShopHeader
           shopName={shopName}
           role={role}
@@ -606,7 +625,7 @@ function SidebarContent({
       <div className="border-t border-stone-200/60 pt-4 pb-2">
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="group flex w-full items-center justify-start gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-red-100 hover:text-red-500"
+          className="group flex w-full items-center justify-start gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-red-100 hover:text-red-500 relative"
         >
           <LogOut className="h-4.5 w-4.5 shrink-0 text-stone-500 transition-colors group-hover:text-red-500" />
           <motion.span
@@ -618,6 +637,11 @@ function SidebarContent({
           >
             Sign out
           </motion.span>
+          {!open && (
+            <div className="absolute left-full ml-4 hidden md:block rounded-md bg-stone-800 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 z-50 whitespace-nowrap pointer-events-none">
+              Sign out
+            </div>
+          )}
         </button>
       </div>
     </>

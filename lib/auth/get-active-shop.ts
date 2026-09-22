@@ -1,23 +1,23 @@
-import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
-import { getEffectivePermissionState } from '@/lib/permissions';
-import { prisma } from '@/lib/prisma';
+import { redirect } from "next/navigation";
+import { auth } from "@/auth";
+import { getEffectivePermissionState } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
 
-type GuardMode = 'redirect' | 'throw';
+type GuardMode = "redirect" | "throw";
 
 export class AuthenticationError extends Error {
-  constructor(message = 'Authentication required.') {
+  constructor(message = "Authentication required.") {
     super(message);
-    this.name = 'AuthenticationError';
+    this.name = "AuthenticationError";
   }
 }
 
 export class ShopContextError extends Error {
-  code: 'SHOP_REQUIRED' | 'SHOP_ACCESS_LOST';
+  code: "SHOP_REQUIRED" | "SHOP_ACCESS_LOST";
 
-  constructor(code: 'SHOP_REQUIRED' | 'SHOP_ACCESS_LOST', message: string) {
+  constructor(code: "SHOP_REQUIRED" | "SHOP_ACCESS_LOST", message: string) {
     super(message);
-    this.name = 'ShopContextError';
+    this.name = "ShopContextError";
     this.code = code;
   }
 }
@@ -26,8 +26,8 @@ async function resolveActiveShopContext(mode: GuardMode) {
   const session = await auth();
 
   if (!session?.user?.id) {
-    if (mode === 'redirect') {
-      redirect('/login');
+    if (mode === "redirect") {
+      redirect("/login");
     }
 
     throw new AuthenticationError();
@@ -35,18 +35,33 @@ async function resolveActiveShopContext(mode: GuardMode) {
 
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { defaultShopId: true }
+    select: { defaultShopId: true },
   });
-  const preferredShopId = currentUser?.defaultShopId ?? session.user.defaultShopId ?? null;
+
+  // JWT sessions are stateless. If DATABASE_URL is switched (or the user row
+  // is otherwise removed), the browser can still hold a validly signed token
+  // for a user id that does not exist in the current database.
+  if (!currentUser) {
+    if (mode === "redirect") {
+      redirect("/login?error=session-invalid");
+    }
+
+    throw new AuthenticationError(
+      "Your session is no longer valid. Please sign in again.",
+    );
+  }
+
+  const preferredShopId =
+    currentUser.defaultShopId ?? session.user.defaultShopId ?? null;
 
   const preferredMembership = preferredShopId
     ? await prisma.userShop.findFirst({
         where: {
           userId: session.user.id,
           shopId: preferredShopId,
-          isActive: true
+          isActive: true,
         },
-        include: { shop: true }
+        include: { shop: true },
       })
     : null;
 
@@ -55,34 +70,34 @@ async function resolveActiveShopContext(mode: GuardMode) {
     (await prisma.userShop.findFirst({
       where: {
         userId: session.user.id,
-        isActive: true
+        isActive: true,
       },
       include: { shop: true },
-      orderBy: { assignedAt: 'asc' }
+      orderBy: { assignedAt: "asc" },
     }));
 
   if (!membership) {
     const anyMembership = await prisma.userShop.findFirst({
       where: { userId: session.user.id },
-      select: { id: true }
+      select: { id: true },
     });
 
-    if (mode === 'redirect') {
-      redirect(anyMembership ? '/login?error=shop-access-lost' : '/onboard');
+    if (mode === "redirect") {
+      redirect(anyMembership ? "/login?error=shop-access-lost" : "/onboard");
     }
 
     throw new ShopContextError(
-      anyMembership ? 'SHOP_ACCESS_LOST' : 'SHOP_REQUIRED',
+      anyMembership ? "SHOP_ACCESS_LOST" : "SHOP_REQUIRED",
       anyMembership
-        ? 'Your shop access is inactive. Contact an administrator.'
-        : 'No active shop found for this user.'
+        ? "Your shop access is inactive. Contact an administrator."
+        : "No active shop found for this user.",
     );
   }
 
   if (preferredShopId !== membership.shopId) {
     await prisma.user.update({
       where: { id: session.user.id },
-      data: { defaultShopId: membership.shopId }
+      data: { defaultShopId: membership.shopId },
     });
   }
 
@@ -93,15 +108,18 @@ async function resolveActiveShopContext(mode: GuardMode) {
     shop: membership.shop,
     role: membership.role,
     customPermissions: membership.customPermissions,
-    permissions: getEffectivePermissionState(membership.role, membership.customPermissions),
-    userId: session.user.id
+    permissions: getEffectivePermissionState(
+      membership.role,
+      membership.customPermissions,
+    ),
+    userId: session.user.id,
   };
 }
 
 export async function getActiveShopContext() {
-  return resolveActiveShopContext('redirect');
+  return resolveActiveShopContext("redirect");
 }
 
 export async function getActiveShopContextOrThrow() {
-  return resolveActiveShopContext('throw');
+  return resolveActiveShopContext("throw");
 }

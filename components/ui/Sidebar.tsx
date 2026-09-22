@@ -85,7 +85,7 @@ export const DesktopSidebar = ({
   children,
   ...props
 }: React.ComponentProps<typeof motion.div>) => {
-  const { open, setOpen, animate } = useSidebar();
+  const { open, animate } = useSidebar();
   return (
     <motion.div
       className={cn(
@@ -95,8 +95,6 @@ export const DesktopSidebar = ({
       animate={{
         width: animate ? (open ? "300px" : "80px") : "300px",
       }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
       {...props}
     >
       {children}
@@ -184,6 +182,7 @@ export const SidebarLink = ({
   return (
     <Link
       href={link.href}
+      title={!open ? link.label : undefined}
       className={cn(
         "flex items-center justify-start gap-3 group/sidebar py-2.5 px-3 rounded-2xl transition-colors hover:bg-emerald-50/60",
         className,
