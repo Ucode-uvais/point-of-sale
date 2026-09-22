@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import nodemailer from "nodemailer";
 
 type MailRecipient = {
   email: string;
@@ -30,22 +30,24 @@ function getRequiredEnv(name: string) {
 export function isMailConfigured() {
   return Boolean(
     process.env.SMTP_HOST?.trim() &&
-      process.env.SMTP_PORT?.trim() &&
-      process.env.SMTP_USER?.trim() &&
-      process.env.SMTP_PASS?.trim() &&
-      process.env.MAIL_FROM_ADDRESS?.trim()
+    process.env.SMTP_PORT?.trim() &&
+    process.env.SMTP_USER?.trim() &&
+    process.env.SMTP_PASS?.trim() &&
+    process.env.MAIL_FROM_ADDRESS?.trim(),
   );
 }
 
 function getMailTransport() {
-  const host = getRequiredEnv('SMTP_HOST');
-  const port = Number(getRequiredEnv('SMTP_PORT'));
-  const user = getRequiredEnv('SMTP_USER');
-  const pass = getRequiredEnv('SMTP_PASS');
-  const secure = (process.env.SMTP_SECURE ?? '').trim().toLowerCase() === 'true' || port === 465;
+  const host = getRequiredEnv("SMTP_HOST");
+  const port = Number(getRequiredEnv("SMTP_PORT"));
+  const user = getRequiredEnv("SMTP_USER");
+  const pass = getRequiredEnv("SMTP_PASS");
+  const secure =
+    (process.env.SMTP_SECURE ?? "").trim().toLowerCase() === "true" ||
+    port === 465;
 
   if (!Number.isFinite(port) || port <= 0) {
-    throw new Error('SMTP_PORT must be a valid positive number.');
+    throw new Error("SMTP_PORT must be a valid positive number.");
   }
 
   return nodemailer.createTransport({
@@ -54,14 +56,14 @@ function getMailTransport() {
     secure,
     auth: {
       user,
-      pass
-    }
+      pass,
+    },
   });
 }
 
 function getMailFrom() {
-  const address = getRequiredEnv('MAIL_FROM_ADDRESS');
-  const name = process.env.MAIL_FROM_NAME?.trim() || 'Vertex POS';
+  const address = getRequiredEnv("MAIL_FROM_ADDRESS");
+  const name = process.env.MAIL_FROM_NAME?.trim() || "Crezvion POS";
   return `${name} <${address}>`;
 }
 
@@ -74,52 +76,71 @@ export function buildAppUrl(pathname: string, request?: Request | null) {
 
   const baseUrl = configuredBaseUrl || request?.url;
   if (!baseUrl) {
-    throw new Error('Unable to resolve application URL. Set APP_URL in the environment.');
+    throw new Error(
+      "Unable to resolve application URL. Set APP_URL in the environment.",
+    );
   }
 
   return new URL(pathname, baseUrl).toString();
 }
 
-export async function sendTransactionalEmail(message: MailMessage): Promise<EmailDeliveryResult> {
+export async function sendTransactionalEmail(
+  message: MailMessage,
+): Promise<EmailDeliveryResult> {
   if (!isMailConfigured()) {
-    throw new Error('SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and MAIL_FROM_ADDRESS.');
+    throw new Error(
+      "SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and MAIL_FROM_ADDRESS.",
+    );
   }
 
   const transporter = getMailTransport();
   const result = await transporter.sendMail({
     from: getMailFrom(),
-    to: message.to.name ? `${message.to.name} <${message.to.email}>` : message.to.email,
+    to: message.to.name
+      ? `${message.to.name} <${message.to.email}>`
+      : message.to.email,
     replyTo: message.replyTo,
     subject: message.subject,
     html: message.html,
-    text: message.text
+    text: message.text,
   });
 
   return {
     accepted: result.accepted.map((value) => String(value)),
     rejected: result.rejected.map((value) => String(value)),
-    messageId: result.messageId
+    messageId: result.messageId,
   };
 }
 
 function getSupportEmail() {
-  return process.env.MAIL_REPLY_TO?.trim() || process.env.MAIL_FROM_ADDRESS?.trim() || 'support@example.com';
+  return (
+    process.env.MAIL_REPLY_TO?.trim() ||
+    process.env.MAIL_FROM_ADDRESS?.trim() ||
+    "support@example.com"
+  );
 }
 
 function escapeHtml(value: string) {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function getBrandName() {
-  return process.env.MAIL_BRAND_NAME?.trim() || 'Vertex POS';
+  return process.env.MAIL_BRAND_NAME?.trim() || "Crezvion POS";
 }
 
-function wrapEmailHtml({ preview, title, bodyHtml, ctaLabel, ctaUrl, footerHtml }: {
+function wrapEmailHtml({
+  preview,
+  title,
+  bodyHtml,
+  ctaLabel,
+  ctaUrl,
+  footerHtml,
+}: {
   preview: string;
   title: string;
   bodyHtml: string;
@@ -176,7 +197,7 @@ function wrapEmailHtml({ preview, title, bodyHtml, ctaLabel, ctaUrl, footerHtml 
 export async function sendEmailVerificationEmail({
   to,
   verificationUrl,
-  expiresAt
+  expiresAt,
 }: {
   to: MailRecipient;
   verificationUrl: string;
@@ -192,25 +213,25 @@ export async function sendEmailVerificationEmail({
     replyTo: getSupportEmail(),
     text: [
       `Welcome to ${brandName}.`,
-      '',
-      'Verify your email address by opening the link below:',
+      "",
+      "Verify your email address by opening the link below:",
       verificationUrl,
-      '',
+      "",
       `This link expires on ${expiresLabel}.`,
-      `If you did not create this account, you can ignore this email or contact ${getSupportEmail()}.`
-    ].join('\n'),
+      `If you did not create this account, you can ignore this email or contact ${getSupportEmail()}.`,
+    ].join("\n"),
     html: wrapEmailHtml({
       preview: `Verify your email address for ${brandName}.`,
-      title: 'Verify your email address',
+      title: "Verify your email address",
       bodyHtml: `
-        <p style="margin:0 0 14px;">Welcome${to.name ? `, ${escapeHtml(to.name)}` : ''}.</p>
+        <p style="margin:0 0 14px;">Welcome${to.name ? `, ${escapeHtml(to.name)}` : ""}.</p>
         <p style="margin:0 0 14px;">Your account has been created successfully. Confirm your email address to unlock sign-in access for the POS workspace.</p>
         <p style="margin:0;">This verification link expires on <strong>${escapeHtml(expiresLabel)}</strong>.</p>
       `,
-      ctaLabel: 'Verify email',
+      ctaLabel: "Verify email",
       ctaUrl: verificationUrl,
-      footerHtml: `If you did not create this account, you can safely ignore this email or contact <a href="mailto:${escapeHtml(getSupportEmail())}" style="color:#059669;text-decoration:none;">${escapeHtml(getSupportEmail())}</a>.`
-    })
+      footerHtml: `If you did not create this account, you can safely ignore this email or contact <a href="mailto:${escapeHtml(getSupportEmail())}" style="color:#059669;text-decoration:none;">${escapeHtml(getSupportEmail())}</a>.`,
+    }),
   });
 }
 
@@ -219,7 +240,7 @@ export async function sendPasswordResetEmail({
   resetUrl,
   expiresAt,
   issuedByName,
-  shopName
+  shopName,
 }: {
   to: MailRecipient;
   resetUrl: string;
@@ -230,8 +251,8 @@ export async function sendPasswordResetEmail({
   const brandName = getBrandName();
   const subject = `Reset your ${brandName} password`;
   const expiresLabel = expiresAt.toUTCString();
-  const issuerLabel = issuedByName?.trim() || 'your administrator';
-  const shopLabel = shopName?.trim() ? ` for ${shopName.trim()}` : '';
+  const issuerLabel = issuedByName?.trim() || "your administrator";
+  const shopLabel = shopName?.trim() ? ` for ${shopName.trim()}` : "";
 
   return sendTransactionalEmail({
     to,
@@ -239,24 +260,24 @@ export async function sendPasswordResetEmail({
     replyTo: getSupportEmail(),
     text: [
       `${issuerLabel} requested a password reset${shopLabel}.`,
-      '',
-      'Use the link below to set a new password:',
+      "",
+      "Use the link below to set a new password:",
       resetUrl,
-      '',
+      "",
       `This link expires on ${expiresLabel}.`,
-      `If you were not expecting this email, contact ${getSupportEmail()} immediately.`
-    ].join('\n'),
+      `If you were not expecting this email, contact ${getSupportEmail()} immediately.`,
+    ].join("\n"),
     html: wrapEmailHtml({
       preview: `Reset your ${brandName} password.`,
-      title: 'Set a new password',
+      title: "Set a new password",
       bodyHtml: `
-        <p style="margin:0 0 14px;">Hello${to.name ? `, ${escapeHtml(to.name)}` : ''}.</p>
+        <p style="margin:0 0 14px;">Hello${to.name ? `, ${escapeHtml(to.name)}` : ""}.</p>
         <p style="margin:0 0 14px;">${escapeHtml(issuerLabel)} requested a password reset${escapeHtml(shopLabel)}.</p>
         <p style="margin:0;">Use the button below to set a new password. This link expires on <strong>${escapeHtml(expiresLabel)}</strong>.</p>
       `,
-      ctaLabel: 'Reset password',
+      ctaLabel: "Reset password",
       ctaUrl: resetUrl,
-      footerHtml: `If you were not expecting this email, contact <a href="mailto:${escapeHtml(getSupportEmail())}" style="color:#059669;text-decoration:none;">${escapeHtml(getSupportEmail())}</a> immediately.`
-    })
+      footerHtml: `If you were not expecting this email, contact <a href="mailto:${escapeHtml(getSupportEmail())}" style="color:#059669;text-decoration:none;">${escapeHtml(getSupportEmail())}</a> immediately.`,
+    }),
   });
 }

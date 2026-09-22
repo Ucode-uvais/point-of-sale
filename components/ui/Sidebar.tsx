@@ -117,7 +117,7 @@ export const MobileSidebar = ({
         {...props}
       >
         <div className="font-black text-emerald-800 tracking-tight text-lg">
-          Vertex POS
+          Crezvion POS
         </div>
         <div className="flex justify-end z-20">
           <button
@@ -146,7 +146,7 @@ export const MobileSidebar = ({
               {/* Dedicated Mobile Header to prevent overlap */}
               <div className="flex h-16 shrink-0 items-center justify-between border-b border-stone-100 px-4">
                 <div className="font-black text-emerald-800 tracking-tight text-lg">
-                  Vertex POS
+                  Crezvion POS
                 </div>
                 <button
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-500 shadow-sm transition hover:bg-stone-50 hover:text-stone-900 active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
