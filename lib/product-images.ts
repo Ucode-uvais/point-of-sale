@@ -55,7 +55,7 @@ function shouldUseCloudinary() {
 }
 
 function getCloudinaryFolder(shopId: string) {
-  return `crezvion-pos/products/${sanitizeSegment(shopId)}`;
+  return `vertex-pos/products/${sanitizeSegment(shopId)}`;
 }
 
 async function saveToLocalFilesystem(shopId: string, file: File) {
