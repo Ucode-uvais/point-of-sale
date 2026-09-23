@@ -328,7 +328,7 @@ const ShopHeader = ({
           <PanelLeftOpen className="h-5 w-5 text-black" />
         </button>
         <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-lg font-black text-white shadow-sm">
-          V
+          C
         </div>
       </div>
     );
@@ -338,18 +338,23 @@ const ShopHeader = ({
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm"
+      className="flex w-full min-w-0 flex-col gap-3"
     >
-      <div className="mb-4 flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3">
+      {/*
+        Identity row: fixed-size content only (avatar, truncated name, role,
+        toggle button). This never shares a box with the branch <select>, so
+        a long branch name can no longer affect whether the toggle is visible.
+      */}
+      <div className="flex w-full min-w-0 items-center justify-between gap-2 rounded-3xl border border-stone-200 bg-white p-3 shadow-sm">
+        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
           <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-lg font-black text-white shadow-sm">
-            V
+            C
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[15px] font-black text-stone-950">
               {shopName}
             </div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-700">
+            <div className="truncate text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-700">
               {role}
             </div>
           </div>
@@ -363,14 +368,20 @@ const ShopHeader = ({
         </button>
       </div>
 
-      <div className="mt-4">
+      {/*
+        Branch selector: its own card, its own overflow guard. Even if a
+        branch name is very long, overflow-hidden + min-w-0 + a bounded
+        select keep this card (and the row above it) from ever growing
+        wider than the sidebar.
+      */}
+      <div className="w-full min-w-0 overflow-hidden rounded-3xl border border-stone-200 bg-white p-3 shadow-sm">
         <div className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-[0.15em] text-stone-400">
           {hasMultipleShops ? "Active Branch" : "Assigned Branch"}
         </div>
         {hasMultipleShops ? (
           <>
             <select
-              className="h-10 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 outline-none transition-colors hover:border-stone-300 focus:border-emerald-500 disabled:opacity-50"
+              className="h-10 w-full min-w-0 max-w-full rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 outline-none transition-colors hover:border-stone-300 focus:border-emerald-500 disabled:opacity-50"
               value={activeShopId}
               onChange={(event) => void switchShop(event.target.value)}
               disabled={switchingShop}
@@ -388,7 +399,7 @@ const ShopHeader = ({
             ) : null}
           </>
         ) : (
-          <div className="flex h-10 w-full items-center rounded-xl border border-stone-100 bg-stone-50 px-3 text-sm font-semibold text-stone-600">
+          <div className="flex h-10 w-full min-w-0 items-center rounded-xl border border-stone-100 bg-stone-50 px-3 text-sm font-semibold text-stone-600">
             <span className="truncate">{shopName}</span>
           </div>
         )}

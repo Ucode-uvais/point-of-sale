@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ThermalReceipt from "@/components/receipts/ThermalReceipt";
@@ -343,6 +344,102 @@ function buildInitialCheckoutPersistenceState({
   return restored;
 }
 
+// ---------------------------------------------------------------------------
+// Hydration-safe client signals (mounted flag, online status, ticking clock).
+//
+// These use useSyncExternalStore instead of "useEffect(() => setX(...))"
+// because useSyncExternalStore is the pattern React itself provides for
+// syncing to a value that legitimately differs between the server render
+// and the client (mount state, browser online status, wall-clock time). It
+// renders the server snapshot first (avoiding a hydration mismatch), then
+// reconciles to the client snapshot without going through a manual
+// setState-in-effect, which is flagged by react-hooks/set-state-in-effect.
+// ---------------------------------------------------------------------------
+
+function subscribeToMount() {
+  // Mount status never changes after the initial client render, so there is
+  // nothing to subscribe to.
+  return () => {};
+}
+function getMountedSnapshot() {
+  return true;
+}
+function getMountedServerSnapshot() {
+  return false;
+}
+function useIsMounted() {
+  return useSyncExternalStore(
+    subscribeToMount,
+    getMountedSnapshot,
+    getMountedServerSnapshot,
+  );
+}
+
+function subscribeToOnlineStatus(onStoreChange: () => void) {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
+  return () => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+}
+function getOnlineSnapshot() {
+  return navigator.onLine;
+}
+function getOnlineServerSnapshot() {
+  // Assume online during SSR; corrected on the client immediately after
+  // hydration via the snapshot above.
+  return true;
+}
+function useIsOnline() {
+  return useSyncExternalStore(
+    subscribeToOnlineStatus,
+    getOnlineSnapshot,
+    getOnlineServerSnapshot,
+  );
+}
+
+// A cached, shared "current time" store. useSyncExternalStore's getSnapshot
+// must return the SAME value between emitted updates (React compares it with
+// Object.is on every render) — calling Date.now() directly here would return
+// a new value on every call and force React into a synchronous re-render
+// loop (visible as "Maximum update depth exceeded").
+let cachedClockValue: number | null = null;
+let clockTimer: number | null = null;
+const clockListeners = new Set<() => void>();
+
+function subscribeToClock(onStoreChange: () => void) {
+  clockListeners.add(onStoreChange);
+  if (clockTimer === null) {
+    cachedClockValue = Date.now();
+    clockTimer = window.setInterval(() => {
+      cachedClockValue = Date.now();
+      clockListeners.forEach((listener) => listener());
+    }, 60_000);
+  }
+  return () => {
+    clockListeners.delete(onStoreChange);
+    if (clockListeners.size === 0 && clockTimer !== null) {
+      window.clearInterval(clockTimer);
+      clockTimer = null;
+      cachedClockValue = null;
+    }
+  };
+}
+function getClockSnapshot() {
+  return cachedClockValue;
+}
+function getClockServerSnapshot() {
+  return null;
+}
+function useClientClock() {
+  return useSyncExternalStore(
+    subscribeToClock,
+    getClockSnapshot,
+    getClockServerSnapshot,
+  );
+}
+
 export default function CheckoutClient({
   products,
   categories,
@@ -446,11 +543,11 @@ export default function CheckoutClient({
     receiptNumber: string;
     localReceiptNumber: string;
   } | null>(null);
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useIsMounted();
   const [persistenceReady, setPersistenceReady] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
+  const isOnline = useIsOnline();
   const [syncingQueue, setSyncingQueue] = useState(false);
-  const [clock, setClock] = useState<number | null>(null);
+  const clock = useClientClock();
   const [error, setError] = useState("");
   const [scanFeedback, setScanFeedback] = useState<ScanFeedback>(null);
   const [parkedFeedback, setParkedFeedback] = useState("");
@@ -674,15 +771,6 @@ export default function CheckoutClient({
     // Prevent the persistence effects from deleting/writing storage until the
     // browser state above has been restored.
     setPersistenceReady(true);
-  }, []);
-
-  useEffect(() => {
-    setIsMounted(true);
-    setIsOnline(typeof navigator === "undefined" ? true : navigator.onLine);
-    setClock(Date.now());
-
-    const timer = window.setInterval(() => setClock(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
   }, []);
 
   const focusScanInput = useCallback((selectText = false) => {
@@ -1185,7 +1273,6 @@ export default function CheckoutClient({
     await syncQueuedSalesNow();
   });
   const handleOnlineEffect = useEffectEvent(() => {
-    setIsOnline(true);
     setParkedFeedback("Connection restored. Syncing queued sales now.");
     void syncQueuedSalesNow();
   });
@@ -1263,16 +1350,10 @@ export default function CheckoutClient({
       handleOnlineEffect();
     }
 
-    function handleOffline() {
-      setIsOnline(false);
-    }
-
     window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
 
     return () => {
       window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
@@ -1389,28 +1470,33 @@ export default function CheckoutClient({
     [cart.length, customers, focusScanInput, productMap, resetPayments, router],
   );
 
+  const resumeParkedSaleFromUrlEffect = useEffectEvent(
+    (parkedSaleId: string) => {
+      const parkedSale = parkedSales.find((entry) => entry.id === parkedSaleId);
+      if (!parkedSale) {
+        setError(
+          "That saved checkout entry is no longer available or has already expired.",
+        );
+        router.replace("/checkout");
+        return;
+      }
+
+      void resumeParkedSale(parkedSale, {
+        skipReplaceConfirm: true,
+        clearSearchParamAfter: true,
+      });
+    },
+  );
+
   useEffect(() => {
     const parkedSaleId = searchParams.get("parkedSaleId");
     if (!parkedSaleId || handledSearchParamResumeRef.current === parkedSaleId) {
       return;
     }
 
-    const parkedSale = parkedSales.find((entry) => entry.id === parkedSaleId);
-    if (!parkedSale) {
-      handledSearchParamResumeRef.current = parkedSaleId;
-      setError(
-        "That saved checkout entry is no longer available or has already expired.",
-      );
-      router.replace("/checkout");
-      return;
-    }
-
     handledSearchParamResumeRef.current = parkedSaleId;
-    void resumeParkedSale(parkedSale, {
-      skipReplaceConfirm: true,
-      clearSearchParamAfter: true,
-    });
-  }, [parkedSales, resumeParkedSale, router, searchParams]);
+    resumeParkedSaleFromUrlEffect(parkedSaleId);
+  }, [searchParams]);
 
   async function saveCheckoutDraft(type: "SAVED_CART" | "QUOTE") {
     if (!cart.length) {

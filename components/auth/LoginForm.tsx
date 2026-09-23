@@ -67,7 +67,7 @@ export default function LoginForm({
       <div className="mx-auto grid min-h-screen max-w-6xl items-center gap-10 px-6 py-12 md:grid-cols-2">
         <div className="hidden rounded-3xl bg-linear-to-br from-emerald-600 to-emerald-700 p-10 text-white shadow-xl md:block">
           <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-2xl font-black">
-            V
+            C
           </div>
           <h1 className="text-4xl font-black leading-tight">
             Sign in to manage your store.
