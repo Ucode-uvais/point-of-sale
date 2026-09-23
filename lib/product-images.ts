@@ -40,18 +40,58 @@ function isCloudinaryConfigured() {
   );
 }
 
+export class ProductImageStorageConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductImageStorageConfigurationError";
+  }
+}
+
+function assertCloudinaryConfigured() {
+  const missing = [
+    ["CLOUDINARY_CLOUD_NAME", process.env.CLOUDINARY_CLOUD_NAME],
+    ["CLOUDINARY_API_KEY", process.env.CLOUDINARY_API_KEY],
+    ["CLOUDINARY_API_SECRET", process.env.CLOUDINARY_API_SECRET],
+  ]
+    .filter(([, value]) => !value?.trim())
+    .map(([name]) => name);
+
+  if (missing.length) {
+    throw new ProductImageStorageConfigurationError(
+      `Cloudinary image storage is selected but required environment variables are missing: ${missing.join(", ")}.`,
+    );
+  }
+}
+
 function shouldUseCloudinary() {
   const strategy = process.env.UPLOAD_STRATEGY?.trim().toLowerCase();
 
   if (strategy === "local") {
+    // Explicit local storage remains available for local development or
+    // deliberately self-hosted deployments. It is never selected as a silent
+    // production fallback.
     return false;
   }
 
   if (strategy === "cloudinary") {
-    return isCloudinaryConfigured();
+    assertCloudinaryConfigured();
+    return true;
   }
 
-  return process.env.NODE_ENV === "production" && isCloudinaryConfigured();
+  if (strategy) {
+    throw new ProductImageStorageConfigurationError(
+      `Unsupported UPLOAD_STRATEGY "${strategy}". Use "cloudinary" or "local".`,
+    );
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    // Production must not silently fall back to the ephemeral filesystem when
+    // Cloudinary configuration is missing.
+    assertCloudinaryConfigured();
+    return true;
+  }
+
+  return false;
 }
 
 function getCloudinaryFolder(shopId: string) {

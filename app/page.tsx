@@ -9,7 +9,7 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-stone-50 via-white to-stone-100">
+    <main className="min-h-screen bg-linear-to-b from-stone-50 via-white to-stone-100">
       <section className="mx-auto flex min-h-screen max-w-7xl flex-col justify-center px-6 py-20 lg:flex-row lg:items-center lg:justify-between lg:gap-14">
         <div className="max-w-3xl">
           <div className="mb-5 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-sm font-semibold text-emerald-700">
@@ -39,7 +39,7 @@ export default async function HomePage() {
             </Link>
           </div>
         </div>
-        <div className="mt-16 grid gap-4 lg:mt-0 lg:w-[420px]">
+        <div className="mt-16 grid gap-4 lg:mt-0 lg:w-105">
           {[
             [
               "Shop onboarding",
