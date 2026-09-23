@@ -231,6 +231,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         pathname === "/signup" ||
         pathname === "/verify-email" ||
         pathname === "/reset-password" ||
+        pathname === "/api/cron/worker" ||
         pathname.startsWith("/api/auth");
       return isPublicRoute ? true : !!auth;
     },
