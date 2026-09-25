@@ -1,8 +1,100 @@
 @import "tailwindcss";
 
+/* RizzUI: scan component classes shipped by the package. */
+@source "../node_modules/rizzui/dist";
+
+/*
+ * RizzUI's scanned distribution contains a FileInput utility that generates
+ * an invalid ::file-selector-button:hover:enabled selector.
+ *
+ * We use RizzUI Select, not RizzUI FileInput, so exclude only this utility.
+ */
+@source not inline("file:hover:enabled:bg-primary-dark");
+
+/* RizzUI/Tailwind form normalization. */
+@plugin "@tailwindcss/forms";
+
 :root {
+  /* Existing Vertex POS base colors. */
   --background: #f3f5f1;
   --foreground: #1f2937;
+
+  /* RizzUI semantic tokens mapped to the existing Vertex POS palette. */
+  --muted: #e7e5e4;
+  --muted-foreground: #78716c;
+
+  --border-radius: 0.75rem;
+  --border-width: 0.0625rem;
+  --border-color: #e7e5e4;
+
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+
+  --primary-lighter: #d1fae5;
+  --primary: #059669;
+  --primary-dark: #047857;
+  --primary-foreground: #ffffff;
+
+  --secondary-lighter: #e0f2fe;
+  --secondary: #0284c7;
+  --secondary-dark: #0369a1;
+  --secondary-foreground: #ffffff;
+
+  --red-lighter: #fee2e2;
+  --red: #dc2626;
+  --red-dark: #b91c1c;
+
+  --orange-lighter: #fef3c7;
+  --orange: #d97706;
+  --orange-dark: #b45309;
+
+  --blue-lighter: #dbeafe;
+  --blue: #2563eb;
+  --blue-dark: #1d4ed8;
+
+  --green-lighter: #d1fae5;
+  --green: #059669;
+  --green-dark: #047857;
+}
+
+/* Expose the semantic tokens to Tailwind v4 utilities used by RizzUI. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --radius: var(--border-radius);
+  --color-border: var(--border-color);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+
+  --color-primary-lighter: var(--primary-lighter);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary-lighter: var(--secondary-lighter);
+  --color-secondary: var(--secondary);
+  --color-secondary-dark: var(--secondary-dark);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-red-lighter: var(--red-lighter);
+  --color-red: var(--red);
+  --color-red-dark: var(--red-dark);
+
+  --color-orange-lighter: var(--orange-lighter);
+  --color-orange: var(--orange);
+  --color-orange-dark: var(--orange-dark);
+
+  --color-blue-lighter: var(--blue-lighter);
+  --color-blue: var(--blue);
+  --color-blue-dark: var(--blue-dark);
+
+  --color-green-lighter: var(--green-lighter);
+  --color-green: var(--green);
+  --color-green-dark: var(--green-dark);
 }
 
 html,
@@ -35,9 +127,21 @@ textarea {
 
 body {
   background-image:
-    radial-gradient(circle at top left, rgba(16, 185, 129, 0.12), transparent 26%),
-    radial-gradient(circle at 100% 0%, rgba(14, 165, 233, 0.1), transparent 24%),
-    radial-gradient(circle at 20% 100%, rgba(245, 158, 11, 0.08), transparent 18%),
+    radial-gradient(
+      circle at top left,
+      rgba(16, 185, 129, 0.12),
+      transparent 26%
+    ),
+    radial-gradient(
+      circle at 100% 0%,
+      rgba(14, 165, 233, 0.1),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 20% 100%,
+      rgba(245, 158, 11, 0.08),
+      transparent 18%
+    ),
     linear-gradient(180deg, #f6f8f4 0%, #eef2ec 100%);
 }
 

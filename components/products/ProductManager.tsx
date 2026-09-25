@@ -1,15 +1,8 @@
 "use client";
 
-import {
-  type FormEvent,
-  type ReactNode,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
@@ -17,12 +10,10 @@ import BarcodeLabelPreview, {
   type BarcodeLabelSize,
 } from "@/components/products/BarcodeLabelPreview";
 import { money, shortDate } from "@/lib/format";
-import { getStockLevel, stockLevelLabel } from "@/lib/inventory";
 import {
   buildVariantLabel,
   getMarginSummary,
 } from "@/lib/product-merchandising";
-import { summarizeConversions } from "@/lib/uom";
 
 type Category = { id: string; name: string; parentId: string | null };
 type UnitOfMeasure = {
@@ -183,104 +174,105 @@ async function uploadProductImage(file: File) {
 }
 
 export default function ProductManager({
-  initialProducts,
+  initialProduct,
   categories,
   units,
   canEditProducts,
   canViewPurchaseCosts,
   currencySymbol,
-  lowStockThreshold,
   inventoryDefaults,
 }: {
-  initialProducts: Product[];
+  initialProduct: Product | null;
   categories: Category[];
   units: UnitOfMeasure[];
   canEditProducts: boolean;
   canViewPurchaseCosts: boolean;
   currencySymbol: string;
-  lowStockThreshold: number;
   inventoryDefaults: {
     batchTrackingEnabled: boolean;
     expiryTrackingEnabled: boolean;
     expiryAlertDays: number;
   };
 }) {
-  const [products, setProducts] = useState(initialProducts);
-  const [query, setQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(
+    initialProduct,
+  );
+  const editingId = editingProduct?.id ?? null;
   const [labelSize, setLabelSize] = useState<BarcodeLabelSize>("medium");
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const [form, setForm] = useState({
-    categoryId: "",
-    baseUnitOfMeasureId:
-      units.find((unit) => unit.code === "PIECE")?.id ?? units[0]?.id ?? "",
-    sku: "",
-    barcode: "",
-    name: "",
-    description: "",
-    cost: "0.00",
-    price: "0.00",
-    stockQty: "0",
-    reorderPoint: "5",
-    trackBatches: inventoryDefaults.batchTrackingEnabled,
-    trackExpiry: inventoryDefaults.expiryTrackingEnabled,
-    changeNote: "",
-    uomConversions: [] as Array<{
-      unitOfMeasureId: string;
-      ratioToBase: string;
-    }>,
-    variants: [] as VariantDraft[],
-    images: [] as ImageDraft[],
-    isActive: true,
-  });
+  const [form, setForm] = useState(() =>
+    initialProduct
+      ? {
+          categoryId: initialProduct.categoryId ?? "",
+          baseUnitOfMeasureId:
+            initialProduct.baseUnitOfMeasureId ??
+            units.find((unit) => unit.code === "PIECE")?.id ??
+            units[0]?.id ??
+            "",
+          sku: initialProduct.sku ?? "",
+          barcode: initialProduct.barcode ?? "",
+          name: initialProduct.name,
+          description: initialProduct.description ?? "",
+          cost: initialProduct.cost,
+          price: initialProduct.price,
+          stockQty: String(initialProduct.stockQty),
+          reorderPoint: String(initialProduct.reorderPoint),
+          trackBatches: initialProduct.trackBatches,
+          trackExpiry: initialProduct.trackExpiry,
+          changeNote: "",
+          uomConversions: initialProduct.uomConversions.map((conversion) => ({
+            unitOfMeasureId: conversion.unitOfMeasureId,
+            ratioToBase: String(conversion.ratioToBase),
+          })),
+          variants: initialProduct.variants.map((variant) => ({
+            color: variant.color ?? "",
+            size: variant.size ?? "",
+            flavor: variant.flavor ?? "",
+            model: variant.model ?? "",
+            sku: variant.sku ?? "",
+            barcode: variant.barcode ?? "",
+            priceOverride: variant.priceOverride ?? "",
+            costOverride: variant.costOverride ?? "",
+            isActive: variant.isActive,
+          })),
+          images: initialProduct.images.map((image) => ({
+            imageUrl: image.imageUrl,
+            altText: image.altText ?? "",
+            sortOrder: String(image.sortOrder),
+          })),
+          isActive: initialProduct.isActive,
+        }
+      : {
+          categoryId: "",
+          baseUnitOfMeasureId:
+            units.find((unit) => unit.code === "PIECE")?.id ??
+            units[0]?.id ??
+            "",
+          sku: "",
+          barcode: "",
+          name: "",
+          description: "",
+          cost: "0.00",
+          price: "0.00",
+          stockQty: "0",
+          reorderPoint: "5",
+          trackBatches: inventoryDefaults.batchTrackingEnabled,
+          trackExpiry: inventoryDefaults.expiryTrackingEnabled,
+          changeNote: "",
+          uomConversions: [] as Array<{
+            unitOfMeasureId: string;
+            ratioToBase: string;
+          }>,
+          variants: [] as VariantDraft[],
+          images: [] as ImageDraft[],
+          isActive: true,
+        },
+  );
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
 
-  const filtered = useMemo(() => {
-    const term = query.toLowerCase().trim();
-
-    return products.filter((product) => {
-      const variantSearch = product.variants
-        .map((variant) =>
-          [
-            variant.sku ?? "",
-            variant.barcode ?? "",
-            toVariantLabel(variant),
-          ].join(" "),
-        )
-        .join(" ");
-      const matchesTerm =
-        !term ||
-        [
-          product.name,
-          product.sku ?? "",
-          product.barcode ?? "",
-          product.category?.name ?? "",
-          variantSearch,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(term);
-
-      const matchesCategory =
-        !categoryFilter || product.categoryId === categoryFilter;
-      return matchesTerm && matchesCategory;
-    });
-  }, [products, query, categoryFilter]);
-
-  const activeCount = products.filter((product) => product.isActive).length;
-  const archivedCount = products.length - activeCount;
-  const lowStockCount = products.filter(
-    (product) =>
-      getStockLevel(
-        product.stockQty,
-        product.reorderPoint,
-        lowStockThreshold,
-      ) !== "IN_STOCK",
-  ).length;
   const selectedBaseUnit =
     units.find((unit) => unit.id === form.baseUnitOfMeasureId) ?? null;
   const currentMargin = getMarginSummary(
@@ -289,7 +281,6 @@ export default function ProductManager({
   );
 
   function resetForm() {
-    setEditingId(null);
     setForm({
       categoryId: "",
       baseUnitOfMeasureId:
@@ -313,51 +304,6 @@ export default function ProductManager({
     if (uploadInputRef.current) {
       uploadInputRef.current.value = "";
     }
-  }
-
-  function beginEdit(product: Product) {
-    setEditingId(product.id);
-    setError("");
-    setSuccess("");
-    setForm({
-      categoryId: product.categoryId ?? "",
-      baseUnitOfMeasureId:
-        product.baseUnitOfMeasureId ??
-        units.find((unit) => unit.code === "PIECE")?.id ??
-        "",
-      sku: product.sku ?? "",
-      barcode: product.barcode ?? "",
-      name: product.name,
-      description: product.description ?? "",
-      cost: product.cost,
-      price: product.price,
-      stockQty: String(product.stockQty),
-      reorderPoint: String(product.reorderPoint),
-      trackBatches: product.trackBatches,
-      trackExpiry: product.trackExpiry,
-      changeNote: "",
-      uomConversions: product.uomConversions.map((conversion) => ({
-        unitOfMeasureId: conversion.unitOfMeasureId,
-        ratioToBase: String(conversion.ratioToBase),
-      })),
-      variants: product.variants.map((variant) => ({
-        color: variant.color ?? "",
-        size: variant.size ?? "",
-        flavor: variant.flavor ?? "",
-        model: variant.model ?? "",
-        sku: variant.sku ?? "",
-        barcode: variant.barcode ?? "",
-        priceOverride: variant.priceOverride ?? "",
-        costOverride: variant.costOverride ?? "",
-        isActive: variant.isActive,
-      })),
-      images: product.images.map((image) => ({
-        imageUrl: image.imageUrl,
-        altText: image.altText ?? "",
-        sortOrder: String(image.sortOrder),
-      })),
-      isActive: product.isActive,
-    });
   }
 
   async function addUploadedImages(files: FileList | null) {
@@ -541,7 +487,7 @@ export default function ProductManager({
       return;
     }
 
-    const product = {
+    const product: Product = {
       ...data.product,
       cost: String(data.product.cost),
       price: String(data.product.price),
@@ -551,56 +497,55 @@ export default function ProductManager({
       images: data.product.images ?? [],
       priceHistory: data.product.priceHistory ?? [],
       costHistory: data.product.costHistory ?? [],
-      batches: editingId
-        ? (products.find((item) => item.id === editingId)?.batches ?? [])
-        : [],
+      batches: editingProduct?.batches ?? [],
     };
 
-    setProducts((currentProducts) =>
-      editingId
-        ? currentProducts.map((item) =>
-            item.id === editingId ? product : item,
-          )
-        : [product, ...currentProducts],
-    );
+    if (editingId) {
+      setEditingProduct(product);
+      setForm((current) => ({
+        ...current,
+        categoryId: product.categoryId ?? "",
+        baseUnitOfMeasureId:
+          product.baseUnitOfMeasureId ?? current.baseUnitOfMeasureId,
+        sku: product.sku ?? "",
+        barcode: product.barcode ?? "",
+        name: product.name,
+        description: product.description ?? "",
+        cost: product.cost,
+        price: product.price,
+        stockQty: String(product.stockQty),
+        reorderPoint: String(product.reorderPoint),
+        trackBatches: product.trackBatches,
+        trackExpiry: product.trackExpiry,
+        changeNote: "",
+        uomConversions: product.uomConversions.map((conversion) => ({
+          unitOfMeasureId: conversion.unitOfMeasureId,
+          ratioToBase: String(conversion.ratioToBase),
+        })),
+        variants: product.variants.map((variant) => ({
+          color: variant.color ?? "",
+          size: variant.size ?? "",
+          flavor: variant.flavor ?? "",
+          model: variant.model ?? "",
+          sku: variant.sku ?? "",
+          barcode: variant.barcode ?? "",
+          priceOverride: variant.priceOverride ?? "",
+          costOverride: variant.costOverride ?? "",
+          isActive: variant.isActive,
+        })),
+        images: product.images.map((image) => ({
+          imageUrl: image.imageUrl,
+          altText: image.altText ?? "",
+          sortOrder: String(image.sortOrder),
+        })),
+        isActive: product.isActive,
+      }));
+      setSuccess("Product updated successfully.");
+      return;
+    }
 
-    setSuccess(
-      editingId
-        ? "Product updated successfully."
-        : "Product created successfully.",
-    );
+    setSuccess("Product created successfully.");
     resetForm();
-  }
-
-  async function toggleArchive(product: Product) {
-    const confirmed = window.confirm(
-      `${product.isActive ? "Archive" : "Restore"} ${product.name}?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    const response = await fetch(`/api/products/${product.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        isActive: !product.isActive,
-      }),
-    });
-
-    const data = await response.json().catch(() => null);
-    if (!response.ok || !data?.product) {
-      setError(data?.error ?? "Unable to update product status.");
-      return;
-    }
-
-    setProducts((currentProducts) =>
-      currentProducts.map((item) =>
-        item.id === product.id
-          ? { ...item, isActive: data.product.isActive }
-          : item,
-      ),
-    );
   }
 
   return (
@@ -610,7 +555,7 @@ export default function ProductManager({
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
-                Catalog editor
+                Product editor
               </div>
               <div
                 id="new-product"
@@ -625,31 +570,16 @@ export default function ProductManager({
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                  Active
-                </div>
-                <div className="mt-1 text-xl font-black text-stone-950">
-                  {activeCount}
-                </div>
-              </div>
-              <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                  Low stock
-                </div>
-                <div className="mt-1 text-xl font-black text-amber-700">
-                  {lowStockCount}
-                </div>
-              </div>
-              <div className="rounded-[22px] border border-stone-200 bg-stone-50 px-4 py-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
-                  Archived
-                </div>
-                <div className="mt-1 text-xl font-black text-stone-950">
-                  {archivedCount}
-                </div>
-              </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/products/product-list">
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="hover:bg-green-900 cursor-pointer"
+                >
+                  Product List
+                </Button>
+              </Link>
             </div>
           </div>
 
@@ -1384,11 +1314,8 @@ export default function ProductManager({
                     >
                       <Button type="button">Print product labels</Button>
                     </Link>
-                    {products
-                      .find((product) => product.id === editingId)
-                      ?.variants.filter(
-                        (variant) => variant.barcode || variant.sku,
-                      )
+                    {editingProduct?.variants
+                      .filter((variant) => variant.barcode || variant.sku)
                       .slice(0, 2)
                       .map((variant) => (
                         <Link
@@ -1418,33 +1345,28 @@ export default function ProductManager({
                         Recent price changes
                       </div>
                       <div className="mt-4 space-y-3">
-                        {(
-                          products.find((product) => product.id === editingId)
-                            ?.priceHistory ?? []
-                        ).length ? (
-                          products
-                            .find((product) => product.id === editingId)!
-                            .priceHistory.map((entry) => (
-                              <div
-                                key={entry.id}
-                                className="rounded-[20px] border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600"
-                              >
-                                <div className="font-semibold text-stone-900">
-                                  {money(entry.previousPrice, currencySymbol)}{" "}
-                                  to {money(entry.newPrice, currencySymbol)}
-                                </div>
-                                <div className="mt-1 text-xs text-stone-500">
-                                  {shortDate(entry.effectiveDate)} by{" "}
-                                  {entry.changedByUser.name ??
-                                    entry.changedByUser.email}
-                                </div>
-                                {entry.note ? (
-                                  <div className="mt-2 text-xs text-stone-500">
-                                    {entry.note}
-                                  </div>
-                                ) : null}
+                        {(editingProduct?.priceHistory ?? []).length ? (
+                          editingProduct!.priceHistory.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className="rounded-[20px] border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600"
+                            >
+                              <div className="font-semibold text-stone-900">
+                                {money(entry.previousPrice, currencySymbol)} to{" "}
+                                {money(entry.newPrice, currencySymbol)}
                               </div>
-                            ))
+                              <div className="mt-1 text-xs text-stone-500">
+                                {shortDate(entry.effectiveDate)} by{" "}
+                                {entry.changedByUser.name ??
+                                  entry.changedByUser.email}
+                              </div>
+                              {entry.note ? (
+                                <div className="mt-2 text-xs text-stone-500">
+                                  {entry.note}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))
                         ) : (
                           <div className="rounded-[20px] border border-dashed border-stone-300 bg-stone-50 px-4 py-5 text-sm text-stone-500">
                             No price changes recorded yet.
@@ -1461,33 +1383,28 @@ export default function ProductManager({
                         Recent cost changes
                       </div>
                       <div className="mt-4 space-y-3">
-                        {(
-                          products.find((product) => product.id === editingId)
-                            ?.costHistory ?? []
-                        ).length ? (
-                          products
-                            .find((product) => product.id === editingId)!
-                            .costHistory.map((entry) => (
-                              <div
-                                key={entry.id}
-                                className="rounded-[20px] border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600"
-                              >
-                                <div className="font-semibold text-stone-900">
-                                  {money(entry.previousCost, currencySymbol)} to{" "}
-                                  {money(entry.newCost, currencySymbol)}
-                                </div>
-                                <div className="mt-1 text-xs text-stone-500">
-                                  {shortDate(entry.effectiveDate)} by{" "}
-                                  {entry.changedByUser.name ??
-                                    entry.changedByUser.email}
-                                </div>
-                                {entry.note ? (
-                                  <div className="mt-2 text-xs text-stone-500">
-                                    {entry.note}
-                                  </div>
-                                ) : null}
+                        {(editingProduct?.costHistory ?? []).length ? (
+                          editingProduct!.costHistory.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className="rounded-[20px] border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600"
+                            >
+                              <div className="font-semibold text-stone-900">
+                                {money(entry.previousCost, currencySymbol)} to{" "}
+                                {money(entry.newCost, currencySymbol)}
                               </div>
-                            ))
+                              <div className="mt-1 text-xs text-stone-500">
+                                {shortDate(entry.effectiveDate)} by{" "}
+                                {entry.changedByUser.name ??
+                                  entry.changedByUser.email}
+                              </div>
+                              {entry.note ? (
+                                <div className="mt-2 text-xs text-stone-500">
+                                  {entry.note}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))
                         ) : (
                           <div className="rounded-[20px] border border-dashed border-stone-300 bg-stone-50 px-4 py-5 text-sm text-stone-500">
                             No cost changes recorded yet.
@@ -1520,9 +1437,11 @@ export default function ProductManager({
                     : "Save product"}
               </Button>
               {editingId ? (
-                <Button type="button" variant="secondary" onClick={resetForm}>
-                  Cancel
-                </Button>
+                <Link href="/products/product-list">
+                  <Button type="button" variant="secondary">
+                    Cancel
+                  </Button>
+                </Link>
               ) : null}
             </div>
           </form>
@@ -1542,234 +1461,6 @@ export default function ProductManager({
           </p>
         </Card>
       )}
-
-      <Card>
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-xl font-black text-stone-900">
-              Product catalog
-            </h2>
-            <p className="text-sm text-stone-500">
-              Search, filter, and manage commercial product records with
-              variants and recent changes.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 md:flex-row">
-            <Input
-              placeholder="Search products or variants..."
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="md:w-72"
-            />
-            <select
-              className={`${selectClassName} md:w-56`}
-              value={categoryFilter}
-              onChange={(event) => setCategoryFilter(event.target.value)}
-            >
-              <option value="">All categories</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-[26px] border border-stone-200">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-stone-50 text-stone-500">
-                <tr>
-                  <th className="px-4 py-3.5">Product</th>
-                  <th className="px-4 py-3.5">Category</th>
-                  <th className="px-4 py-3.5">Commercial data</th>
-                  <th className="px-4 py-3.5">Variants</th>
-                  <th className="px-4 py-3.5">Pricing</th>
-                  <th className="px-4 py-3.5">Stock</th>
-                  <th className="px-4 py-3.5">Status</th>
-                  <th className="px-4 py-3.5">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((product) => {
-                  const level = getStockLevel(
-                    product.stockQty,
-                    product.reorderPoint,
-                    lowStockThreshold,
-                  );
-                  const margin = getMarginSummary(
-                    Number(product.price),
-                    Number(product.cost),
-                  );
-                  const nextExpiryBatch =
-                    product.batches.find(
-                      (batch) => batch.expiryDate && batch.quantity > 0,
-                    ) ?? null;
-
-                  return (
-                    <tr
-                      key={product.id}
-                      className="border-t border-stone-200 bg-white transition hover:bg-stone-50/70"
-                    >
-                      <td className="px-4 py-4">
-                        <div className="flex gap-3">
-                          <div className="relative h-14 w-14 overflow-hidden rounded-[18px] border border-stone-200 bg-stone-50">
-                            {product.images[0] ? (
-                              <Image
-                                src={product.images[0].imageUrl}
-                                alt={product.images[0].altText ?? product.name}
-                                fill
-                                className="object-cover"
-                              />
-                            ) : null}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-stone-900">
-                              {product.name}
-                            </div>
-                            <div className="mt-1 text-xs text-stone-500">
-                              {product.description ?? "No description"}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        {product.category?.name ?? "Uncategorized"}
-                      </td>
-                      <td className="px-4 py-4 text-stone-600">
-                        <div>
-                          {product.sku || "N/A"} / {product.barcode || "N/A"}
-                        </div>
-                        <div className="mt-2 text-xs text-stone-500">
-                          Base:{" "}
-                          {product.baseUnitOfMeasure?.name ?? "Unit not set"}
-                        </div>
-                        <div className="mt-1 text-xs text-stone-500">
-                          {summarizeConversions(
-                            product.uomConversions.map((conversion) => ({
-                              unitName: conversion.unitOfMeasure.name,
-                              ratioToBase: conversion.ratioToBase,
-                            })),
-                            product.baseUnitOfMeasure?.name,
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <Badge tone="blue">
-                            {product.variants.length} variant(s)
-                          </Badge>
-                          {product.images.length ? (
-                            <Badge tone="stone">
-                              {product.images.length} image(s)
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <div className="mt-2 text-xs text-stone-500">
-                          {product.variants
-                            .slice(0, 2)
-                            .map(
-                              (variant) =>
-                                toVariantLabel(variant) ||
-                                variant.sku ||
-                                variant.barcode ||
-                                "Variant",
-                            )
-                            .join(" | ") || "No variants"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="font-semibold text-stone-900">
-                          {money(product.price, currencySymbol)}
-                        </div>
-                        {canViewPurchaseCosts ? (
-                          <>
-                            <div className="text-xs text-stone-500">
-                              Cost {money(product.cost, currencySymbol)}
-                            </div>
-                            <div
-                              className={`mt-2 text-xs ${margin.tone === "red" ? "text-red-700" : margin.tone === "amber" ? "text-amber-700" : "text-emerald-700"}`}
-                            >
-                              {margin.message}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="text-xs text-stone-500">
-                            Cost visibility is restricted for this account.
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="font-semibold text-stone-900">
-                          {product.stockQty}
-                        </div>
-                        <div className="mt-1 text-xs text-stone-500">
-                          {nextExpiryBatch?.expiryDate
-                            ? `Next expiry ${shortDate(nextExpiryBatch.expiryDate)}`
-                            : product.batches.length
-                              ? `${product.batches.length} batch record(s)`
-                              : "No batch records"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <Badge tone={product.isActive ? "emerald" : "stone"}>
-                            {product.isActive ? "Active" : "Archived"}
-                          </Badge>
-                          <Badge
-                            tone={
-                              level === "OUT_OF_STOCK"
-                                ? "red"
-                                : level === "LOW_STOCK"
-                                  ? "amber"
-                                  : "blue"
-                            }
-                          >
-                            {stockLevelLabel(level)}
-                          </Badge>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        {canEditProducts ? (
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              onClick={() => beginEdit(product)}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="text-xs uppercase tracking-[0.14em]"
-                              onClick={() => toggleArchive(product)}
-                            >
-                              {product.isActive ? "Archive" : "Restore"}
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-stone-500">
-                            No edit access
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {!filtered.length ? (
-            <div className="border-t border-stone-200 bg-stone-50 py-10 text-center text-sm text-stone-500">
-              No products matched that filter.
-            </div>
-          ) : null}
-        </div>
-      </Card>
     </div>
   );
 }

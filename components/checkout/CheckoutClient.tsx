@@ -17,6 +17,7 @@ import ThermalReceipt from "@/components/receipts/ThermalReceipt";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
+import { Select } from "rizzui/select";
 import { getCustomerDisplayName } from "@/lib/customers";
 import { dateTime, money } from "@/lib/format";
 import { roundCurrency } from "@/lib/inventory";
@@ -51,6 +52,7 @@ import {
 } from "@/lib/shop-settings";
 
 type Category = { id: string; name: string };
+type CategorySelectOption = { label: string; value: string };
 type Product = {
   id: string;
   productId: string;
@@ -556,6 +558,17 @@ export default function CheckoutClient({
   const [resumeLoadingId, setResumeLoadingId] = useState<string | null>(null);
   const [cancelLoadingId, setCancelLoadingId] = useState<string | null>(null);
   const hasSearchFilters = Boolean(query.trim() || selectedCategory);
+
+  const categoryOptions = useMemo<CategorySelectOption[]>(
+    () => [
+      { label: "All categories", value: "" },
+      ...categories.map((category) => ({
+        label: category.name,
+        value: category.id,
+      })),
+    ],
+    [categories],
+  );
 
   const filtered = useMemo(() => {
     const term = query.toLowerCase().trim();
@@ -2044,8 +2057,8 @@ export default function CheckoutClient({
         </Card>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-        <Card className="space-y-5 overflow-hidden">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+        <Card className="min-w-0 space-y-5 overflow-hidden">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
@@ -2120,24 +2133,38 @@ export default function CheckoutClient({
               </div>
             ) : null}
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedCategory("")}
-                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${!selectedCategory ? "border-emerald-600 bg-emerald-600 text-white" : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"}`}
-              >
-                All
-              </button>
-              {categories.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  onClick={() => setSelectedCategory(category.id)}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedCategory === category.id ? "border-emerald-600 bg-emerald-600 text-white" : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50"}`}
-                >
-                  {category.name}
-                </button>
-              ))}
+            <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,22rem)_auto] sm:items-center">
+              <Select<CategorySelectOption>
+                aria-label="Filter products by category"
+                options={categoryOptions}
+                value={selectedCategory}
+                onChange={(value) => setSelectedCategory(String(value ?? ""))}
+                getOptionValue={(option) => option.value}
+                displayValue={(value) =>
+                  categoryOptions.find((option) => option.value === value)
+                    ?.label ?? "All categories"
+                }
+                searchable
+                stickySearch
+                searchByKey="label"
+                searchPlaceHolder="Search categories..."
+                placeholder="All categories"
+                clearable={Boolean(selectedCategory)}
+                onClear={() => setSelectedCategory("")}
+                size="lg"
+                className="w-full"
+                selectClassName="!h-11 !rounded-2xl !border-stone-200 !bg-white !px-4 !text-sm !font-semibold !text-stone-800 hover:!border-stone-300 focus:!border-emerald-500"
+                dropdownClassName="!rounded-2xl !border !border-stone-200 !bg-white !p-2 !shadow-xl"
+                optionClassName="!rounded-xl !px-3 !py-2.5"
+                searchContainerClassName="!mb-2 !bg-white"
+                searchClassName="!h-10 !rounded-xl !border-stone-200 !bg-stone-50 !text-sm"
+              />
+
+              <div className="text-xs leading-5 text-stone-500 sm:px-1">
+                {selectedCategory
+                  ? `${filtered.length} matching product${filtered.length === 1 ? "" : "s"}`
+                  : `${categories.length} categor${categories.length === 1 ? "y" : "ies"} available`}
+              </div>
             </div>
 
             {scanFeedback ? (
@@ -2149,68 +2176,130 @@ export default function CheckoutClient({
             ) : null}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {filtered.map((product) => (
-              <button
-                key={product.id}
-                type="button"
-                onClick={() => {
-                  setScanFeedback(null);
-                  addToCart(product);
-                }}
-                className="rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,245,244,0.92))] p-4 text-left shadow-[0_18px_36px_-30px_rgba(28,25,23,0.35)] transition hover:-translate-y-1 hover:border-emerald-300"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="h-16 w-16 overflow-hidden rounded-[18px] border border-stone-200 bg-stone-50">
-                    {product.imageUrl ? (
-                      <Image
-                        src={product.imageUrl}
-                        alt={getOptionDisplayName(product)}
-                        width={64}
-                        height={64}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : null}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold text-stone-900">
-                      {product.name}
+          <div
+            className="grid gap-4"
+            style={{
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(min(100%, 19rem), 1fr))",
+            }}
+          >
+            {filtered.map((product) => {
+              const isOutOfStock = product.stockQty <= 0;
+              const isLowStock = product.stockQty > 0 && product.stockQty <= 5;
+              const stockLabel = isOutOfStock
+                ? "Out of stock"
+                : isLowStock
+                  ? "Low stock"
+                  : "Ready";
+              const stockTone = isOutOfStock
+                ? "border-red-200 bg-red-50 text-red-700"
+                : isLowStock
+                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700";
+
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  aria-label={`Add ${getOptionDisplayName(product)} to cart`}
+                  onClick={() => {
+                    setScanFeedback(null);
+                    addToCart(product);
+                  }}
+                  className={`group relative flex min-h-[250px] flex-col overflow-hidden rounded-[28px] border p-4 text-left shadow-[0_16px_38px_-28px_rgba(28,25,23,0.45)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:translate-y-0 active:scale-[0.995] ${
+                    isOutOfStock
+                      ? "border-red-100 bg-[linear-gradient(160deg,rgba(255,255,255,0.98),rgba(254,242,242,0.82))] hover:border-red-200 hover:shadow-[0_20px_42px_-28px_rgba(185,28,28,0.28)]"
+                      : "border-stone-200 bg-[linear-gradient(160deg,rgba(255,255,255,0.99),rgba(250,250,249,0.94))] hover:-translate-y-1 hover:border-emerald-300 hover:shadow-[0_24px_48px_-28px_rgba(5,150,105,0.32)]"
+                  }`}
+                >
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-linear-to-b from-emerald-50/80 via-emerald-50/20 to-transparent opacity-70 transition-opacity duration-200 group-hover:opacity-100" />
+
+                  <div className="relative flex items-start gap-4">
+                    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[22px] border border-stone-200 bg-white shadow-sm sm:h-24 sm:w-24">
+                      {product.imageUrl ? (
+                        <Image
+                          src={product.imageUrl}
+                          alt={getOptionDisplayName(product)}
+                          width={96}
+                          height={96}
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.10),transparent_68%)] text-2xl font-black text-stone-300">
+                          {product.name.trim().slice(0, 1).toUpperCase() || "P"}
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-1 text-sm text-stone-500">
-                      {product.variantLabel ??
-                        product.category?.name ??
-                        "Standard item"}
-                    </div>
-                    <div className="mt-2 text-xs text-stone-500">
-                      SKU: {product.sku ?? "N/A"} / Barcode:{" "}
-                      {product.barcode ?? "N/A"}
-                    </div>
-                  </div>
-                  <div
-                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${product.stockQty <= 0 ? "border-red-200 bg-red-50 text-red-700" : product.stockQty <= 5 ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}
-                  >
-                    {product.stockQty <= 0
-                      ? "Out"
-                      : product.stockQty <= 5
-                        ? "Low"
-                        : "Ready"}
-                  </div>
-                </div>
-                <div className="mt-4 flex items-end justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-400">
-                      Selling price
-                    </div>
-                    <div className="mt-1 text-2xl font-black text-emerald-700">
-                      {money(product.price, currencySymbol)}
+
+                    <div className="min-w-0 flex-1 pt-1">
+                      <div className="line-clamp-2 text-base font-bold leading-snug text-stone-950 transition-colors group-hover:text-emerald-800">
+                        {product.name}
+                      </div>
+                      <div className="mt-1.5 line-clamp-2 text-sm leading-5 text-stone-500">
+                        {product.variantLabel ??
+                          product.category?.name ??
+                          "Standard item"}
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${stockTone}`}
+                        >
+                          {stockLabel}
+                        </span>
+                        <span className="text-xs font-semibold text-stone-500">
+                          {product.stockQty} in stock
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right text-xs font-medium text-stone-500">
-                    {product.stockQty} in stock
+
+                  <div className="relative mt-4 grid grid-cols-2 gap-2">
+                    <div className="min-w-0 rounded-2xl border border-stone-200/80 bg-white/80 px-3 py-2.5 shadow-[0_8px_24px_-24px_rgba(28,25,23,0.4)]">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-400">
+                        SKU
+                      </div>
+                      <div
+                        className="mt-1 truncate text-xs font-semibold text-stone-700"
+                        title={product.sku ?? "N/A"}
+                      >
+                        {product.sku ?? "N/A"}
+                      </div>
+                    </div>
+                    <div className="min-w-0 rounded-2xl border border-stone-200/80 bg-white/80 px-3 py-2.5 shadow-[0_8px_24px_-24px_rgba(28,25,23,0.4)]">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-400">
+                        Barcode
+                      </div>
+                      <div
+                        className="mt-1 truncate text-xs font-semibold text-stone-700"
+                        title={product.barcode ?? "N/A"}
+                      >
+                        {product.barcode ?? "N/A"}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+
+                  <div className="relative mt-auto flex items-end justify-between gap-4 border-t border-stone-200/80 pt-4">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">
+                        Selling price
+                      </div>
+                      <div className="mt-1 truncate text-[1.65rem] font-black leading-none tracking-tight text-emerald-700">
+                        {money(product.price, currencySymbol)}
+                      </div>
+                    </div>
+                    <div
+                      className={`shrink-0 rounded-full border px-3 py-2 text-xs font-bold transition-colors ${
+                        isOutOfStock
+                          ? "border-stone-200 bg-stone-100 text-stone-500"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700 group-hover:border-emerald-600 group-hover:bg-emerald-600 group-hover:text-white"
+                      }`}
+                    >
+                      {isOutOfStock ? "Unavailable" : "+ Add item"}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           {!filtered.length ? (

@@ -70,18 +70,23 @@ type IconName =
   | "activity"
   | "staff";
 
-type NavLink = {
+type NavAccessRule = {
+  minRole: ShopRole;
+  requiredPermission?: PermissionKey;
+  requiredAnyPermissions?: PermissionKey[];
+};
+
+type NavSubLink = NavAccessRule & {
+  href: string;
+  label: string;
+};
+
+type NavLink = NavAccessRule & {
   href?: string;
   label: string;
   description: string;
   icon: IconName;
-  minRole: ShopRole;
-  requiredPermission?: PermissionKey;
-  subLinks?: Array<{
-    href: string;
-    label: string;
-    minRole: ShopRole;
-  }>;
+  subLinks?: NavSubLink[];
 };
 
 const ROLE_WEIGHT: Record<ShopRole, number> = {
@@ -89,6 +94,29 @@ const ROLE_WEIGHT: Record<ShopRole, number> = {
   MANAGER: 2,
   ADMIN: 3,
 };
+
+function canAccessNavItem(
+  item: NavAccessRule,
+  role: ShopRole,
+  permissions: PermissionState,
+) {
+  if (ROLE_WEIGHT[role] < ROLE_WEIGHT[item.minRole]) {
+    return false;
+  }
+
+  if (item.requiredPermission && !permissions[item.requiredPermission]) {
+    return false;
+  }
+
+  if (
+    item.requiredAnyPermissions?.length &&
+    !item.requiredAnyPermissions.some((permission) => permissions[permission])
+  ) {
+    return false;
+  }
+
+  return true;
+}
 
 const sections: Array<{ title: string; links: NavLink[] }> = [
   {
@@ -207,11 +235,25 @@ const sections: Array<{ title: string; links: NavLink[] }> = [
     title: "Catalog",
     links: [
       {
-        href: "/products",
         label: "Products",
         description: "Manage items.",
         icon: "products",
         minRole: "MANAGER",
+        requiredAnyPermissions: ["EDIT_PRODUCTS", "VIEW_PURCHASE_COSTS"],
+        subLinks: [
+          {
+            href: "/products",
+            label: "Add Product",
+            minRole: "MANAGER",
+            requiredPermission: "EDIT_PRODUCTS",
+          },
+          {
+            href: "/products/product-list",
+            label: "Product List",
+            minRole: "MANAGER",
+            requiredAnyPermissions: ["EDIT_PRODUCTS", "VIEW_PURCHASE_COSTS"],
+          },
+        ],
       },
       {
         href: "/categories",
@@ -416,20 +458,33 @@ const SidebarAccordion = ({
   pathname: string;
 }) => {
   const { open, setOpen } = useSidebar();
-  const isActiveChild =
-    item.subLinks?.some(
-      (sub) => pathname === sub.href || pathname.startsWith(`${sub.href}/`),
-    ) || false;
+  const activeSubHref =
+    item.subLinks
+      ?.filter(
+        (sub) => pathname === sub.href || pathname.startsWith(`${sub.href}/`),
+      )
+      .sort((left, right) => right.href.length - left.href.length)[0]?.href ??
+    null;
+  const isActiveChild = Boolean(activeSubHref);
+  const routeKey = activeSubHref;
+  const [openOverride, setOpenOverride] = useState<{
+    routeKey: string | null;
+    isOpen: boolean;
+  } | null>(null);
 
-  const [isOpen, setIsOpen] = useState(isActiveChild);
+  const isOpen =
+    openOverride?.routeKey === routeKey ? openOverride.isOpen : isActiveChild;
 
   const toggle = () => {
+    const nextIsOpen = !isOpen;
+
     if (!open) {
       setOpen(true);
-      setIsOpen(true);
-    } else {
-      setIsOpen(!isOpen);
+      setOpenOverride({ routeKey, isOpen: true });
+      return;
     }
+
+    setOpenOverride({ routeKey, isOpen: nextIsOpen });
   };
 
   return (
@@ -485,8 +540,7 @@ const SidebarAccordion = ({
           >
             <div className="mt-1 flex flex-col gap-1 border-l-[1.5px] border-stone-200 py-1 pl-2">
               {item.subLinks?.map((sub) => {
-                const isSubActive =
-                  pathname === sub.href || pathname.startsWith(`${sub.href}/`);
+                const isSubActive = sub.href === activeSubHref;
                 return (
                   <Link
                     key={sub.href}
@@ -539,12 +593,15 @@ function SidebarContent({
       sections
         .map((section) => ({
           ...section,
-          links: section.links.filter(
-            (link) =>
-              ROLE_WEIGHT[role] >= ROLE_WEIGHT[link.minRole] &&
-              (!link.requiredPermission ||
-                permissions[link.requiredPermission]),
-          ),
+          links: section.links
+            .filter((link) => canAccessNavItem(link, role, permissions))
+            .map((link) => ({
+              ...link,
+              subLinks: link.subLinks?.filter((subLink) =>
+                canAccessNavItem(subLink, role, permissions),
+              ),
+            }))
+            .filter((link) => !link.subLinks || link.subLinks.length > 0),
         }))
         .filter((section) => section.links.length > 0),
     [permissions, role],
