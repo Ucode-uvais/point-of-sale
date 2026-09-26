@@ -33,6 +33,8 @@ export default async function ProductListPage() {
           select: {
             id: true,
             name: true,
+            parentId: true,
+            isActive: true,
           },
         },
         baseUnitOfMeasure: {
@@ -108,8 +110,10 @@ export default async function ProductListPage() {
       select: {
         id: true,
         name: true,
+        parentId: true,
+        isActive: true,
       },
-      orderBy: { name: "asc" },
+      orderBy: [{ parentId: "asc" }, { name: "asc" }],
     }),
     prisma.shopSetting.findUnique({
       where: { shopId },

@@ -20,6 +20,11 @@ import Input from "@/components/ui/Input";
 import { Select } from "rizzui/select";
 import { getCustomerDisplayName } from "@/lib/customers";
 import { dateTime, money } from "@/lib/format";
+import {
+  buildCategoryFilterOptions,
+  getCategoryFilterIds,
+  getCategoryPathLabel,
+} from "@/lib/category-presentation";
 import { roundCurrency } from "@/lib/inventory";
 import {
   buildOfflineCheckoutDraftStorageKey,
@@ -51,7 +56,12 @@ import {
   type TaxModeValue,
 } from "@/lib/shop-settings";
 
-type Category = { id: string; name: string };
+type Category = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  isActive: boolean;
+};
 type CategorySelectOption = { label: string; value: string };
 type Product = {
   id: string;
@@ -562,12 +572,16 @@ export default function CheckoutClient({
   const categoryOptions = useMemo<CategorySelectOption[]>(
     () => [
       { label: "All categories", value: "" },
-      ...categories.map((category) => ({
-        label: category.name,
-        value: category.id,
+      ...buildCategoryFilterOptions(categories).map((category) => ({
+        label: category.label,
+        value: category.value,
       })),
     ],
     [categories],
+  );
+  const selectedCategoryIds = useMemo(
+    () => new Set(getCategoryFilterIds(selectedCategory, categories)),
+    [categories, selectedCategory],
   );
 
   const filtered = useMemo(() => {
@@ -575,7 +589,10 @@ export default function CheckoutClient({
     return products
       .filter((product) => {
         const matchesCategory =
-          !selectedCategory || product.categoryId === selectedCategory;
+          !selectedCategory ||
+          (product.categoryId
+            ? selectedCategoryIds.has(product.categoryId)
+            : false);
         const matchesTerm =
           !term ||
           [
@@ -583,7 +600,7 @@ export default function CheckoutClient({
             product.variantLabel ?? "",
             product.barcode ?? "",
             product.sku ?? "",
-            product.category?.name ?? "",
+            getCategoryPathLabel(product.categoryId, categories),
           ]
             .join(" ")
             .toLowerCase()
@@ -591,7 +608,7 @@ export default function CheckoutClient({
         return matchesCategory && matchesTerm;
       })
       .slice(0, 30);
-  }, [products, query, selectedCategory]);
+  }, [categories, products, query, selectedCategory, selectedCategoryIds]);
 
   const selectedCustomer = useMemo(
     () =>
@@ -2163,7 +2180,7 @@ export default function CheckoutClient({
               <div className="text-xs leading-5 text-stone-500 sm:px-1">
                 {selectedCategory
                   ? `${filtered.length} matching product${filtered.length === 1 ? "" : "s"}`
-                  : `${categories.length} categor${categories.length === 1 ? "y" : "ies"} available`}
+                  : `${categoryOptions.length - 1} categor${categoryOptions.length - 1 === 1 ? "y" : "ies"} available`}
               </div>
             </div>
 
@@ -2196,6 +2213,10 @@ export default function CheckoutClient({
                 : isLowStock
                   ? "border-amber-200 bg-amber-50 text-amber-700"
                   : "border-emerald-200 bg-emerald-50 text-emerald-700";
+              const categoryPath = getCategoryPathLabel(
+                product.categoryId,
+                categories,
+              );
 
               return (
                 <button
@@ -2237,9 +2258,13 @@ export default function CheckoutClient({
                       </div>
                       <div className="mt-1.5 line-clamp-2 text-sm leading-5 text-stone-500">
                         {product.variantLabel ??
-                          product.category?.name ??
-                          "Standard item"}
+                          (product.categoryId ? categoryPath : "Standard item")}
                       </div>
+                      {product.variantLabel && product.categoryId ? (
+                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-emerald-700/80">
+                          {categoryPath}
+                        </div>
+                      ) : null}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <span
                           className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${stockTone}`}

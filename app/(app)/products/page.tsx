@@ -34,7 +34,13 @@ export default async function ProductsPage({
   const unitsPromise = ensureUnitsOfMeasure(shopId);
   const categoriesPromise = prisma.category.findMany({
     where: { shopId },
-    orderBy: { name: "asc" },
+    orderBy: [{ parentId: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      parentId: true,
+      isActive: true,
+    },
   });
   const settingsPromise = prisma.shopSetting.findUnique({ where: { shopId } });
   const productPromise = editId

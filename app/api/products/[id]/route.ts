@@ -4,6 +4,7 @@ import { productUpdateSchema } from "@/lib/auth/validation";
 import { requireAnyPermission, requirePermission } from "@/lib/authz";
 import { apiErrorResponse } from "@/lib/api";
 import { logActivity } from "@/lib/activity";
+import { validateAssignableCategory } from "@/lib/category-hierarchy";
 import { normalizeText } from "@/lib/inventory";
 import { prisma } from "@/lib/prisma";
 import {
@@ -343,6 +344,7 @@ export async function PATCH(
       parsed.data.categoryId === undefined
         ? existing.categoryId
         : normalizeText(parsed.data.categoryId);
+    const categoryChanged = nextCategoryId !== existing.categoryId;
     const nextSku =
       parsed.data.sku === undefined
         ? existing.sku
@@ -486,7 +488,7 @@ export async function PATCH(
     }
 
     const [
-      category,
+      categoryValidation,
       duplicateByName,
       duplicateBySku,
       duplicateByBarcode,
@@ -495,12 +497,9 @@ export async function PATCH(
       productSkuConflictWithVariant,
       productBarcodeConflictWithVariant,
     ] = await Promise.all([
-      nextCategoryId
-        ? prisma.category.findFirst({
-            where: { id: nextCategoryId, shopId, isActive: true },
-            select: { id: true },
-          })
-        : Promise.resolve(null),
+      categoryChanged
+        ? validateAssignableCategory(shopId, nextCategoryId)
+        : Promise.resolve({ category: null, issue: null }),
       prisma.product.findFirst({
         where: {
           shopId,
@@ -570,10 +569,10 @@ export async function PATCH(
         : Promise.resolve(null),
     ]);
 
-    if (nextCategoryId && !category) {
+    if (categoryValidation.issue) {
       return NextResponse.json(
-        { error: "Selected category was not found." },
-        { status: 404 },
+        { error: categoryValidation.issue.error },
+        { status: categoryValidation.issue.status },
       );
     }
 
@@ -774,6 +773,12 @@ export async function PATCH(
           baseUnit: product.baseUnitOfMeasure?.code ?? null,
           variantCount: product.variants.length,
           imageCount: product.images.length,
+          categoryChanged,
+          previousCategoryId: existing.categoryId,
+          categoryId: product.categoryId,
+          categoryName:
+            categoryValidation.category?.name ??
+            (categoryChanged ? null : (existing.category?.name ?? null)),
           priceChanged,
           costChanged,
           trackBatches: product.trackBatches,

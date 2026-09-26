@@ -1,15 +1,15 @@
-import AppHeader from '@/components/layout/AppHeader';
-import CheckoutClient from '@/components/checkout/CheckoutClient';
-import { getActiveShopContext } from '@/lib/auth/get-active-shop';
-import { hasRole } from '@/lib/authz';
+import AppHeader from "@/components/layout/AppHeader";
+import CheckoutClient from "@/components/checkout/CheckoutClient";
+import { getActiveShopContext } from "@/lib/auth/get-active-shop";
+import { hasRole } from "@/lib/authz";
 import {
   cleanupExpiredParkedSales,
-  serializeParkedSale
-} from '@/lib/parked-sales';
-import { buildVariantLabel } from '@/lib/product-merchandising';
-import { prisma } from '@/lib/prisma';
-import { getActiveCashSession } from '@/lib/register';
-import { sanitizeDefaultPaymentMethods } from '@/lib/shop-settings';
+  serializeParkedSale,
+} from "@/lib/parked-sales";
+import { buildVariantLabel } from "@/lib/product-merchandising";
+import { prisma } from "@/lib/prisma";
+import { getActiveCashSession } from "@/lib/register";
+import { sanitizeDefaultPaymentMethods } from "@/lib/shop-settings";
 
 type CheckoutProduct = {
   id: string;
@@ -48,38 +48,47 @@ export default async function CheckoutPage() {
 
   await cleanupExpiredParkedSales(prisma, shopId);
 
-  const [products, categories, customers, settings, activeCashSession, parkedSales] = await Promise.all([
+  const [
+    products,
+    categories,
+    customers,
+    settings,
+    activeCashSession,
+    parkedSales,
+  ] = await Promise.all([
     prisma.product.findMany({
       where: { shopId, isActive: true },
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
       include: {
         category: {
           select: {
             id: true,
-            name: true
-          }
+            name: true,
+          },
         },
         variants: {
           where: { isActive: true },
-          orderBy: { createdAt: 'asc' }
+          orderBy: { createdAt: "asc" },
         },
         images: {
-          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-          take: 1
-        }
-      }
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          take: 1,
+        },
+      },
     }),
     prisma.category.findMany({
-      where: { shopId, isActive: true },
-      orderBy: { name: 'asc' },
+      where: { shopId },
+      orderBy: [{ parentId: "asc" }, { name: "asc" }],
       select: {
         id: true,
-        name: true
-      }
+        name: true,
+        parentId: true,
+        isActive: true,
+      },
     }),
     prisma.customer.findMany({
       where: { shopId, isActive: true },
-      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
       select: {
         id: true,
         type: true,
@@ -91,61 +100,61 @@ export default async function CheckoutPage() {
         email: true,
         loyaltyLedger: {
           select: {
-            balanceAfter: true
+            balanceAfter: true,
           },
-          orderBy: [{ createdAt: 'desc' }],
-          take: 1
+          orderBy: [{ createdAt: "desc" }],
+          take: 1,
         },
         creditLedgers: {
           where: {
             status: {
-              not: 'VOIDED'
-            }
+              not: "VOIDED",
+            },
           },
           select: {
-            balance: true
-          }
+            balance: true,
+          },
         },
         sales: {
           where: {
-            status: 'COMPLETED'
+            status: "COMPLETED",
           },
           select: {
-            createdAt: true
+            createdAt: true,
           },
-          orderBy: [{ createdAt: 'desc' }],
-          take: 1
-        }
-      }
+          orderBy: [{ createdAt: "desc" }],
+          take: 1,
+        },
+      },
     }),
     prisma.shopSetting.findUnique({
-      where: { shopId }
+      where: { shopId },
     }),
     getActiveCashSession(prisma, shopId, session.user.id),
     prisma.parkedSale.findMany({
       where: {
         shopId,
-        status: 'HELD',
+        status: "HELD",
         expiresAt: {
-          gt: new Date()
+          gt: new Date(),
         },
-        ...(hasRole(role, 'MANAGER') ? {} : { cashierUserId: userId })
+        ...(hasRole(role, "MANAGER") ? {} : { cashierUserId: userId }),
       },
       include: {
         cashier: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         items: {
-          orderBy: { createdAt: 'asc' }
-        }
+          orderBy: { createdAt: "asc" },
+        },
       },
-      orderBy: { createdAt: 'desc' },
-      take: 20
-    })
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
   ]);
 
   return (
@@ -166,38 +175,41 @@ export default async function CheckoutPage() {
               variantLabel: buildVariantLabel(variant) || null,
               barcode: variant.barcode,
               sku: variant.sku,
-              price: variant.priceOverride?.toString() ?? product.price.toString(),
+              price:
+                variant.priceOverride?.toString() ?? product.price.toString(),
               stockQty: product.stockQty,
               categoryId: product.categoryId,
               imageUrl: product.images[0]?.imageUrl ?? null,
               category: product.category
                 ? {
                     id: product.category.id,
-                    name: product.category.name
+                    name: product.category.name,
                   }
-                : null
+                : null,
             }));
           }
 
-          return [{
-            id: product.id,
-            productId: product.id,
-            variantId: null,
-            name: product.name,
-            variantLabel: null,
-            barcode: product.barcode,
-            sku: product.sku,
-            price: product.price.toString(),
-            stockQty: product.stockQty,
-            categoryId: product.categoryId,
-            imageUrl: product.images[0]?.imageUrl ?? null,
-            category: product.category
-              ? {
-                  id: product.category.id,
-                  name: product.category.name
-                }
-              : null
-          }];
+          return [
+            {
+              id: product.id,
+              productId: product.id,
+              variantId: null,
+              name: product.name,
+              variantLabel: null,
+              barcode: product.barcode,
+              sku: product.sku,
+              price: product.price.toString(),
+              stockQty: product.stockQty,
+              categoryId: product.categoryId,
+              imageUrl: product.images[0]?.imageUrl ?? null,
+              category: product.category
+                ? {
+                    id: product.category.id,
+                    name: product.category.name,
+                  }
+                : null,
+            },
+          ];
         })}
         categories={categories}
         customers={customers.map<CheckoutCustomer>((customer) => ({
@@ -213,14 +225,16 @@ export default async function CheckoutPage() {
           receivableBalance: customer.creditLedgers
             .reduce((sum, ledger) => sum + Number(ledger.balance.toString()), 0)
             .toString(),
-          lastPurchaseAt: customer.sales[0]?.createdAt.toISOString() ?? null
+          lastPurchaseAt: customer.sales[0]?.createdAt.toISOString() ?? null,
         }))}
         taxRate={Number(settings?.taxRate ?? 12)}
-        taxMode={settings?.taxMode ?? 'EXCLUSIVE'}
-        currencySymbol={settings?.currencySymbol ?? '₱'}
-        defaultPaymentMethods={sanitizeDefaultPaymentMethods(settings?.defaultPaymentMethods)}
-        barcodeScannerNotes={settings?.barcodeScannerNotes ?? ''}
-        cashierName={session.user.name ?? 'Cashier'}
+        taxMode={settings?.taxMode ?? "EXCLUSIVE"}
+        currencySymbol={settings?.currencySymbol ?? "₱"}
+        defaultPaymentMethods={sanitizeDefaultPaymentMethods(
+          settings?.defaultPaymentMethods,
+        )}
+        barcodeScannerNotes={settings?.barcodeScannerNotes ?? ""}
+        cashierName={session.user.name ?? "Cashier"}
         hasActiveCashSession={Boolean(activeCashSession)}
         activeCashSessionId={activeCashSession?.id ?? null}
         shopId={shopId}
@@ -232,11 +246,11 @@ export default async function CheckoutPage() {
           name: shop.name,
           address: shop.address,
           phone: shop.phone,
-          email: shop.email
+          email: shop.email,
         }}
         receiptHeader={settings?.receiptHeader ?? null}
         receiptFooter={settings?.receiptFooter ?? null}
-        receiptWidth={settings?.receiptWidth === '58mm' ? '58mm' : '80mm'}
+        receiptWidth={settings?.receiptWidth === "58mm" ? "58mm" : "80mm"}
         initialParkedSales={parkedSales.map(serializeParkedSale)}
       />
     </div>

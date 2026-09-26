@@ -9,6 +9,11 @@ import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { money, shortDate } from "@/lib/format";
+import {
+  buildCategoryFilterOptions,
+  getCategoryFilterIds,
+  getCategoryPathLabel,
+} from "@/lib/category-presentation";
 import { getStockLevel, stockLevelLabel } from "@/lib/inventory";
 import {
   buildVariantLabel,
@@ -19,6 +24,8 @@ import { summarizeConversions } from "@/lib/uom";
 type Category = {
   id: string;
   name: string;
+  parentId: string | null;
+  isActive: boolean;
 };
 
 type UnitOfMeasure = {
@@ -123,6 +130,15 @@ export default function ProductList({
     [initialProducts, statusOverrides],
   );
 
+  const categoryOptions = useMemo(
+    () => buildCategoryFilterOptions(categories),
+    [categories],
+  );
+  const selectedCategoryIds = useMemo(
+    () => new Set(getCategoryFilterIds(categoryFilter, categories)),
+    [categories, categoryFilter],
+  );
+
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
 
@@ -144,7 +160,7 @@ export default function ProductList({
           product.description ?? "",
           product.sku ?? "",
           product.barcode ?? "",
-          product.category?.name ?? "",
+          getCategoryPathLabel(product.categoryId, categories),
           variantSearch,
         ]
           .join(" ")
@@ -152,11 +168,14 @@ export default function ProductList({
           .includes(term);
 
       const matchesCategory =
-        !categoryFilter || product.categoryId === categoryFilter;
+        !categoryFilter ||
+        (product.categoryId
+          ? selectedCategoryIds.has(product.categoryId)
+          : false);
 
       return matchesTerm && matchesCategory;
     });
-  }, [categoryFilter, products, query]);
+  }, [categories, categoryFilter, products, query, selectedCategoryIds]);
 
   const activeCount = products.filter((product) => product.isActive).length;
   const archivedCount = products.length - activeCount;
@@ -277,9 +296,9 @@ export default function ProductList({
               onChange={(event) => setCategoryFilter(event.target.value)}
             >
               <option value="">All categories</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
+              {categoryOptions.map((category) => (
+                <option key={category.value} value={category.value}>
+                  {category.label}
                 </option>
               ))}
             </select>
@@ -360,7 +379,18 @@ export default function ProductList({
                       </td>
 
                       <td className="px-4 py-4">
-                        {product.category?.name ?? "Uncategorized"}
+                        <div className="max-w-56 font-medium text-stone-800">
+                          {getCategoryPathLabel(product.categoryId, categories)}
+                        </div>
+                        {product.categoryId ? (
+                          <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-stone-400">
+                            {categories.find(
+                              (category) => category.id === product.categoryId,
+                            )?.parentId
+                              ? "Subcategory assignment"
+                              : "Main category assignment"}
+                          </div>
+                        ) : null}
                       </td>
 
                       <td className="px-4 py-4 text-stone-600">

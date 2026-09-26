@@ -3,6 +3,7 @@ import { productSchema } from "@/lib/auth/validation";
 import { requireAnyPermission, requirePermission } from "@/lib/authz";
 import { apiErrorResponse } from "@/lib/api";
 import { logActivity } from "@/lib/activity";
+import { validateAssignableCategory } from "@/lib/category-hierarchy";
 import { normalizeText } from "@/lib/inventory";
 import { prisma } from "@/lib/prisma";
 import { ensureUnitsOfMeasure } from "@/lib/uom";
@@ -249,7 +250,7 @@ export async function POST(request: Request) {
     }
 
     const [
-      category,
+      categoryValidation,
       duplicateByName,
       duplicateBySku,
       duplicateByBarcode,
@@ -258,12 +259,7 @@ export async function POST(request: Request) {
       productSkuConflictWithVariant,
       productBarcodeConflictWithVariant,
     ] = await Promise.all([
-      payload.categoryId
-        ? prisma.category.findFirst({
-            where: { id: payload.categoryId, shopId, isActive: true },
-            select: { id: true },
-          })
-        : Promise.resolve(null),
+      validateAssignableCategory(shopId, payload.categoryId),
       prisma.product.findFirst({
         where: {
           shopId,
@@ -324,10 +320,10 @@ export async function POST(request: Request) {
         : Promise.resolve(null),
     ]);
 
-    if (payload.categoryId && !category) {
+    if (categoryValidation.issue) {
       return NextResponse.json(
-        { error: "Selected category was not found." },
-        { status: 404 },
+        { error: categoryValidation.issue.error },
+        { status: categoryValidation.issue.status },
       );
     }
 
@@ -480,6 +476,16 @@ export async function POST(request: Request) {
           baseUnit: createdProduct.baseUnitOfMeasure?.code ?? null,
           variantCount: createdProduct.variants.length,
           imageCount: createdProduct.images.length,
+          categoryId: createdProduct.categoryId,
+          categoryName: categoryValidation.category?.name ?? null,
+          mainCategoryId:
+            categoryValidation.category?.parent?.id ??
+            categoryValidation.category?.id ??
+            null,
+          mainCategoryName:
+            categoryValidation.category?.parent?.name ??
+            categoryValidation.category?.name ??
+            null,
           trackBatches: createdProduct.trackBatches,
           trackExpiry: createdProduct.trackExpiry,
         },

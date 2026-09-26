@@ -1,20 +1,21 @@
-import { NextResponse } from 'next/server';
-import { categoryCreateSchema } from '@/lib/auth/validation';
-import { requireRole } from '@/lib/authz';
-import { apiErrorResponse } from '@/lib/api';
-import { logActivity } from '@/lib/activity';
-import { prisma } from '@/lib/prisma';
-import { slugify } from '@/lib/slug';
+import { NextResponse } from "next/server";
+import { categoryCreateSchema } from "@/lib/auth/validation";
+import { requireRole } from "@/lib/authz";
+import { apiErrorResponse } from "@/lib/api";
+import { logActivity } from "@/lib/activity";
+import { validateCategoryParent } from "@/lib/category-hierarchy";
+import { prisma } from "@/lib/prisma";
+import { slugify } from "@/lib/slug";
 
 async function uniqueCategorySlug(shopId: string, name: string) {
-  const base = slugify(name) || 'category';
+  const base = slugify(name) || "category";
   let attempt = base;
   let suffix = 2;
 
   while (
     await prisma.category.findFirst({
       where: { shopId, slug: attempt },
-      select: { id: true }
+      select: { id: true },
     })
   ) {
     attempt = `${base}-${suffix++}`;
@@ -23,64 +24,83 @@ async function uniqueCategorySlug(shopId: string, name: string) {
   return attempt;
 }
 
+const categoryInclude = {
+  parent: {
+    select: {
+      id: true,
+      name: true,
+      parentId: true,
+      isActive: true,
+    },
+  },
+  _count: {
+    select: {
+      products: true,
+      children: true,
+    },
+  },
+} as const;
+
 export async function GET() {
   try {
-    const { shopId } = await requireRole('CASHIER');
+    const { shopId } = await requireRole("CASHIER");
     const categories = await prisma.category.findMany({
       where: { shopId },
-      include: { _count: { select: { products: true, children: true } } },
-      orderBy: [{ parentId: 'asc' }, { name: 'asc' }]
+      include: categoryInclude,
+      orderBy: [{ parentId: "asc" }, { name: "asc" }],
     });
 
     return NextResponse.json({ categories });
   } catch (error) {
-    return apiErrorResponse(error, 'Unable to load categories.');
+    return apiErrorResponse(error, "Unable to load categories.");
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const { shopId, userId } = await requireRole('MANAGER');
+    const { shopId, userId } = await requireRole("MANAGER");
     const body = await request.json();
     const parsed = categoryCreateSchema.safeParse(body);
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? 'Invalid category.' },
-        { status: 400 }
+        { error: parsed.error.issues[0]?.message ?? "Invalid category." },
+        { status: 400 },
       );
     }
 
     const name = parsed.data.name.trim();
     const parentId = parsed.data.parentId?.trim() || null;
 
-    const [parentCategory, duplicateByName] = await Promise.all([
-      parentId
-        ? prisma.category.findFirst({
-            where: { id: parentId, shopId, isActive: true },
-            select: { id: true }
-          })
-        : Promise.resolve(null),
+    const [parentValidation, duplicateByName] = await Promise.all([
+      validateCategoryParent({
+        shopId,
+        parentId,
+        requireActive: true,
+      }),
       prisma.category.findFirst({
         where: {
           shopId,
           name: {
             equals: name,
-            mode: 'insensitive'
-          }
+            mode: "insensitive",
+          },
         },
-        select: { id: true }
-      })
+        select: { id: true },
+      }),
     ]);
 
-    if (parentId && !parentCategory) {
-      return NextResponse.json({ error: 'Parent category was not found.' }, { status: 404 });
+    if (parentValidation.issue) {
+      return NextResponse.json(
+        { error: parentValidation.issue.error },
+        { status: parentValidation.issue.status },
+      );
     }
 
     if (duplicateByName) {
       return NextResponse.json(
-        { error: 'A category with this name already exists in this shop.' },
-        { status: 409 }
+        { error: "A category with this name already exists in this shop." },
+        { status: 409 },
       );
     }
 
@@ -92,19 +112,26 @@ export async function POST(request: Request) {
           shopId,
           name,
           slug,
-          parentId
+          parentId,
         },
-        include: { _count: { select: { products: true, children: true } } }
+        include: categoryInclude,
       });
 
       await logActivity({
         tx,
         shopId,
         userId,
-        action: 'CATEGORY_CREATED',
-        entityType: 'Category',
+        action: "CATEGORY_CREATED",
+        entityType: "Category",
         entityId: createdCategory.id,
-        description: `Created category ${createdCategory.name}.`
+        description: parentValidation.parent
+          ? `Created subcategory ${createdCategory.name} under ${parentValidation.parent.name}.`
+          : `Created main category ${createdCategory.name}.`,
+        metadata: {
+          level: createdCategory.parentId ? "SUBCATEGORY" : "MAIN_CATEGORY",
+          parentId: createdCategory.parentId,
+          parentName: parentValidation.parent?.name ?? null,
+        },
       });
 
       return createdCategory;
@@ -112,6 +139,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ category }, { status: 201 });
   } catch (error) {
-    return apiErrorResponse(error, 'Unable to create category.');
+    return apiErrorResponse(error, "Unable to create category.");
   }
 }

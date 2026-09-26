@@ -1,7 +1,11 @@
-import { Prisma } from '@prisma/client';
-import { getStockLevel, roundCurrency } from '@/lib/inventory';
-import { PAYMENT_METHODS } from '@/lib/payments';
-import { prisma } from '@/lib/prisma';
+import { Prisma } from "@prisma/client";
+import {
+  buildCategoryFilterOptions,
+  formatCategoryRelationPath,
+} from "@/lib/category-presentation";
+import { getStockLevel, roundCurrency } from "@/lib/inventory";
+import { PAYMENT_METHODS } from "@/lib/payments";
+import { prisma } from "@/lib/prisma";
 
 export type ReportFilters = {
   from: Date;
@@ -16,7 +20,9 @@ export type ReportFilters = {
 
 const LOW_MOVEMENT_QTY_THRESHOLD = 5;
 
-type ReportSearchParams = Promise<Record<string, string | string[] | undefined>>;
+type ReportSearchParams = Promise<
+  Record<string, string | string[] | undefined>
+>;
 
 type CostHistoryPoint = {
   effectiveDate: Date;
@@ -31,18 +37,34 @@ type CostTimeline = {
 
 function readSingleParam(
   query: Record<string, string | string[] | undefined>,
-  key: string
+  key: string,
 ) {
   const value = query[key];
-  return Array.isArray(value) ? value[0] ?? '' : value ?? '';
+  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 }
 
 function startOfDay(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate(), 0, 0, 0, 0);
+  return new Date(
+    value.getFullYear(),
+    value.getMonth(),
+    value.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
 }
 
 function endOfDay(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate(), 23, 59, 59, 999);
+  return new Date(
+    value.getFullYear(),
+    value.getMonth(),
+    value.getDate(),
+    23,
+    59,
+    59,
+    999,
+  );
 }
 
 function addDays(value: Date, amount: number) {
@@ -57,8 +79,8 @@ function isValidDate(value: Date) {
 
 function formatDateInputValue(value: Date) {
   const year = value.getFullYear();
-  const month = `${value.getMonth() + 1}`.padStart(2, '0');
-  const day = `${value.getDate()}`.padStart(2, '0');
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -67,32 +89,34 @@ function dayKey(value: Date) {
 }
 
 function monthKey(value: Date) {
-  return `${value.getFullYear()}-${`${value.getMonth() + 1}`.padStart(2, '0')}`;
+  return `${value.getFullYear()}-${`${value.getMonth() + 1}`.padStart(2, "0")}`;
 }
 
 function monthLabel(value: Date) {
-  return new Intl.DateTimeFormat('en-PH', {
-    year: 'numeric',
-    month: 'short'
+  return new Intl.DateTimeFormat("en-PH", {
+    year: "numeric",
+    month: "short",
   }).format(value);
 }
 
 function dayLabel(value: Date) {
-  return new Intl.DateTimeFormat('en-PH', {
-    month: 'short',
-    day: '2-digit'
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "2-digit",
   }).format(value);
 }
 
 function hourLabel(hour: number) {
   const base = new Date(2026, 0, 1, hour, 0, 0, 0);
-  return new Intl.DateTimeFormat('en-PH', {
-    hour: 'numeric'
+  return new Intl.DateTimeFormat("en-PH", {
+    hour: "numeric",
   }).format(base);
 }
 
-function cashierLabel(cashier: { name: string | null; email: string | null } | null | undefined) {
-  return cashier?.name ?? cashier?.email ?? 'Unknown cashier';
+function cashierLabel(
+  cashier: { name: string | null; email: string | null } | null | undefined,
+) {
+  return cashier?.name ?? cashier?.email ?? "Unknown cashier";
 }
 
 function toNumber(value: Prisma.Decimal | number | string | null | undefined) {
@@ -108,7 +132,7 @@ function buildCostTimelineMap(
       previousCost: Prisma.Decimal;
       newCost: Prisma.Decimal;
     }>;
-  }>
+  }>,
 ) {
   return new Map<string, CostTimeline>(
     products.map((product) => [
@@ -118,17 +142,17 @@ function buildCostTimelineMap(
         history: product.costHistory.map((entry) => ({
           effectiveDate: entry.effectiveDate,
           previousCost: toNumber(entry.previousCost),
-          newCost: toNumber(entry.newCost)
-        }))
-      }
-    ])
+          newCost: toNumber(entry.newCost),
+        })),
+      },
+    ]),
   );
 }
 
 function resolveCostAtDate(
   timelines: Map<string, CostTimeline>,
   productId: string,
-  atDate: Date
+  atDate: Date,
 ) {
   const timeline = timelines.get(productId);
   if (!timeline) {
@@ -160,7 +184,11 @@ function resolveCostAtDate(
   return resolvedCost;
 }
 
-function allocateLineDiscount(lineSubtotal: number, saleSubtotal: number, saleDiscount: number) {
+function allocateLineDiscount(
+  lineSubtotal: number,
+  saleSubtotal: number,
+  saleDiscount: number,
+) {
   if (saleSubtotal <= 0 || saleDiscount <= 0 || lineSubtotal <= 0) {
     return 0;
   }
@@ -171,23 +199,57 @@ function allocateLineDiscount(lineSubtotal: number, saleSubtotal: number, saleDi
 function calculateNetLineRevenue({
   lineSubtotal,
   saleSubtotal,
-  saleDiscount
+  saleDiscount,
 }: {
   lineSubtotal: number;
   saleSubtotal: number;
   saleDiscount: number;
 }) {
-  return roundCurrency(lineSubtotal - allocateLineDiscount(lineSubtotal, saleSubtotal, saleDiscount));
+  return roundCurrency(
+    lineSubtotal -
+      allocateLineDiscount(lineSubtotal, saleSubtotal, saleDiscount),
+  );
 }
 
-export async function parseReportFilters(searchParams: ReportSearchParams): Promise<ReportFilters> {
+async function resolveCategoryFilterIds(shopId: string, categoryId: string) {
+  if (!categoryId) {
+    return [];
+  }
+
+  const category = await prisma.category.findFirst({
+    where: { id: categoryId, shopId },
+    select: {
+      id: true,
+      parentId: true,
+      children: {
+        select: { id: true },
+      },
+    },
+  });
+
+  if (!category) {
+    return [categoryId];
+  }
+
+  if (category.parentId) {
+    return [category.id];
+  }
+
+  return [category.id, ...category.children.map((child) => child.id)];
+}
+
+export async function parseReportFilters(
+  searchParams: ReportSearchParams,
+): Promise<ReportFilters> {
   const query = await searchParams;
   const today = new Date();
   const defaultTo = startOfDay(today);
   const defaultFrom = addDays(defaultTo, -29);
 
-  const fromValue = readSingleParam(query, 'from') || formatDateInputValue(defaultFrom);
-  const toValue = readSingleParam(query, 'to') || formatDateInputValue(defaultTo);
+  const fromValue =
+    readSingleParam(query, "from") || formatDateInputValue(defaultFrom);
+  const toValue =
+    readSingleParam(query, "to") || formatDateInputValue(defaultTo);
   const parsedFrom = startOfDay(new Date(fromValue));
   const parsedTo = endOfDay(new Date(toValue));
 
@@ -200,10 +262,10 @@ export async function parseReportFilters(searchParams: ReportSearchParams): Prom
       to: endOfDay(defaultTo),
       fromValue: formatDateInputValue(defaultFrom),
       toValue: formatDateInputValue(defaultTo),
-      cashierId: '',
-      categoryId: '',
-      paymentMethod: '',
-      productId: ''
+      cashierId: "",
+      categoryId: "",
+      paymentMethod: "",
+      productId: "",
     };
   }
 
@@ -212,10 +274,10 @@ export async function parseReportFilters(searchParams: ReportSearchParams): Prom
     to,
     fromValue: formatDateInputValue(from),
     toValue: formatDateInputValue(to),
-    cashierId: readSingleParam(query, 'cashierId'),
-    categoryId: readSingleParam(query, 'categoryId'),
-    paymentMethod: readSingleParam(query, 'paymentMethod'),
-    productId: readSingleParam(query, 'productId')
+    cashierId: readSingleParam(query, "cashierId"),
+    categoryId: readSingleParam(query, "categoryId"),
+    paymentMethod: readSingleParam(query, "paymentMethod"),
+    productId: readSingleParam(query, "productId"),
   };
 }
 
@@ -223,18 +285,23 @@ export async function getReportFilterOptions(shopId: string) {
   const [settings, categories, products, cashiers] = await Promise.all([
     prisma.shopSetting.findUnique({ where: { shopId } }),
     prisma.category.findMany({
-      where: { shopId, isActive: true },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true }
+      where: { shopId },
+      orderBy: [{ parentId: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        parentId: true,
+        isActive: true,
+      },
     }),
     prisma.product.findMany({
       where: { shopId, isActive: true },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true }
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
     }),
     prisma.userShop.findMany({
       where: { shopId, isActive: true },
-      orderBy: [{ role: 'desc' }, { assignedAt: 'asc' }],
+      orderBy: [{ role: "desc" }, { assignedAt: "asc" }],
       select: {
         userId: true,
         role: true,
@@ -242,11 +309,11 @@ export async function getReportFilterOptions(shopId: string) {
           select: {
             id: true,
             name: true,
-            email: true
-          }
-        }
-      }
-    })
+            email: true,
+          },
+        },
+      },
+    }),
   ]);
 
   const seenCashiers = new Set<string>();
@@ -261,74 +328,84 @@ export async function getReportFilterOptions(shopId: string) {
     })
     .map((membership) => ({
       value: membership.user.id,
-      label: `${membership.user.name ?? membership.user.email} (${membership.role})`
+      label: `${membership.user.name ?? membership.user.email} (${membership.role})`,
     }));
 
   return {
-    currencySymbol: settings?.currencySymbol ?? 'PHP ',
-    categories: categories.map((category) => ({ value: category.id, label: category.name })),
-    products: products.map((product) => ({ value: product.id, label: product.name })),
+    currencySymbol: settings?.currencySymbol ?? "PHP ",
+    categories: buildCategoryFilterOptions(categories).map((category) => ({
+      value: category.value,
+      label: category.label,
+    })),
+    products: products.map((product) => ({
+      value: product.id,
+      label: product.name,
+    })),
     cashiers: cashierOptions,
-    paymentMethods: [...PAYMENT_METHODS, 'Customer Credit'].map((method) => ({
+    paymentMethods: [...PAYMENT_METHODS, "Customer Credit"].map((method) => ({
       value: method,
-      label: method
-    }))
+      label: method,
+    })),
   };
 }
 
-export async function getReportsOverviewData(shopId: string, filters: Pick<ReportFilters, 'from' | 'to'>) {
-  const [salesAggregate, inventoryReport, profitReport, adjustmentRows] = await Promise.all([
-    prisma.sale.aggregate({
-      where: {
-        shopId,
-        status: 'COMPLETED',
-        createdAt: { gte: filters.from, lte: filters.to }
-      },
-      _sum: { totalAmount: true },
-      _count: true
-    }),
-    getInventoryReportData(shopId, {
-      from: filters.from,
-      to: filters.to,
-      fromValue: formatDateInputValue(filters.from),
-      toValue: formatDateInputValue(filters.to),
-      cashierId: '',
-      categoryId: '',
-      paymentMethod: '',
-      productId: ''
-    }),
-    getProfitReportData(shopId, {
-      from: filters.from,
-      to: filters.to,
-      fromValue: formatDateInputValue(filters.from),
-      toValue: formatDateInputValue(filters.to),
-      cashierId: '',
-      categoryId: '',
-      paymentMethod: '',
-      productId: ''
-    }),
-    prisma.saleAdjustment.findMany({
-      where: {
-        shopId,
-        createdAt: { gte: filters.from, lte: filters.to }
-      },
-      select: {
-        type: true,
-        totalAmount: true
-      }
-    })
-  ]);
+export async function getReportsOverviewData(
+  shopId: string,
+  filters: Pick<ReportFilters, "from" | "to">,
+) {
+  const [salesAggregate, inventoryReport, profitReport, adjustmentRows] =
+    await Promise.all([
+      prisma.sale.aggregate({
+        where: {
+          shopId,
+          status: "COMPLETED",
+          createdAt: { gte: filters.from, lte: filters.to },
+        },
+        _sum: { totalAmount: true },
+        _count: true,
+      }),
+      getInventoryReportData(shopId, {
+        from: filters.from,
+        to: filters.to,
+        fromValue: formatDateInputValue(filters.from),
+        toValue: formatDateInputValue(filters.to),
+        cashierId: "",
+        categoryId: "",
+        paymentMethod: "",
+        productId: "",
+      }),
+      getProfitReportData(shopId, {
+        from: filters.from,
+        to: filters.to,
+        fromValue: formatDateInputValue(filters.from),
+        toValue: formatDateInputValue(filters.to),
+        cashierId: "",
+        categoryId: "",
+        paymentMethod: "",
+        productId: "",
+      }),
+      prisma.saleAdjustment.findMany({
+        where: {
+          shopId,
+          createdAt: { gte: filters.from, lte: filters.to },
+        },
+        select: {
+          type: true,
+          totalAmount: true,
+        },
+      }),
+    ]);
 
   const refundTotal = roundCurrency(
     adjustmentRows
-      .filter((entry) => entry.type === 'REFUND' || entry.type === 'EXCHANGE')
-      .reduce((sum, entry) => sum + Number(entry.totalAmount.toString()), 0)
+      .filter((entry) => entry.type === "REFUND" || entry.type === "EXCHANGE")
+      .reduce((sum, entry) => sum + Number(entry.totalAmount.toString()), 0),
   );
 
   const voidTotal = roundCurrency(
     adjustmentRows
-      .filter((entry) => entry.type === 'VOID')
-      .reduce((sum, entry) => sum + Number(entry.totalAmount.toString()), 0)
+      .filter((entry) => entry.type === "VOID")
+      .reduce((sum, entry) => sum + Number(entry.totalAmount.toString()), 0),
   );
 
   return {
@@ -337,34 +414,37 @@ export async function getReportsOverviewData(shopId: string, filters: Pick<Repor
     inventoryValuation: inventoryReport.summary.costValue,
     refundTotal,
     voidTotal,
-    grossProfit: profitReport.summary.grossProfit
+    grossProfit: profitReport.summary.grossProfit,
   };
 }
 
-export async function getSalesReportData(shopId: string, filters: ReportFilters) {
+export async function getSalesReportData(
+  shopId: string,
+  filters: ReportFilters,
+) {
   const saleWhere: Prisma.SaleWhereInput = {
     shopId,
-    status: 'COMPLETED',
-    createdAt: { gte: filters.from, lte: filters.to }
+    status: "COMPLETED",
+    createdAt: { gte: filters.from, lte: filters.to },
   };
 
   if (filters.cashierId) {
     saleWhere.cashierUserId = filters.cashierId;
   }
 
-  if (filters.paymentMethod === 'Customer Credit') {
+  if (filters.paymentMethod === "Customer Credit") {
     saleWhere.isCreditSale = true;
   } else if (filters.paymentMethod) {
     saleWhere.payments = {
       some: {
-        method: filters.paymentMethod
-      }
+        method: filters.paymentMethod,
+      },
     };
   }
 
   const sales = await prisma.sale.findMany({
     where: saleWhere,
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: "asc" },
     select: {
       id: true,
       createdAt: true,
@@ -374,8 +454,8 @@ export async function getSalesReportData(shopId: string, filters: ReportFilters)
         select: {
           id: true,
           name: true,
-          email: true
-        }
+          email: true,
+        },
       },
       items: {
         select: {
@@ -387,34 +467,52 @@ export async function getSalesReportData(shopId: string, filters: ReportFilters)
             select: {
               category: {
                 select: {
-                  name: true
-                }
-              }
-            }
-          }
-        }
+                  name: true,
+                  parent: {
+                    select: { name: true },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       payments: {
         select: {
           method: true,
-          amount: true
-        }
-      }
-    }
+          amount: true,
+        },
+      },
+    },
   });
 
-  const dailyMap = new Map<string, { label: string; total: number; count: number }>();
-  const monthlyMap = new Map<string, { label: string; total: number; count: number }>();
-  const hourlyMap = new Map<number, { label: string; total: number; count: number }>();
+  const dailyMap = new Map<
+    string,
+    { label: string; total: number; count: number }
+  >();
+  const monthlyMap = new Map<
+    string,
+    { label: string; total: number; count: number }
+  >();
+  const hourlyMap = new Map<
+    number,
+    { label: string; total: number; count: number }
+  >();
   const paymentMethodMap = new Map<string, number>();
-  const itemMap = new Map<string, { name: string; qty: number; revenue: number }>();
-  const categoryMap = new Map<string, { name: string; qty: number; revenue: number }>();
+  const itemMap = new Map<
+    string,
+    { name: string; qty: number; revenue: number }
+  >();
+  const categoryMap = new Map<
+    string,
+    { name: string; qty: number; revenue: number }
+  >();
 
   for (let hour = 0; hour < 24; hour += 1) {
     hourlyMap.set(hour, {
       label: hourLabel(hour),
       total: 0,
-      count: 0
+      count: 0,
     });
   }
 
@@ -427,7 +525,7 @@ export async function getSalesReportData(shopId: string, filters: ReportFilters)
     const dayEntry = dailyMap.get(saleDayKey) ?? {
       label: dayLabel(sale.createdAt),
       total: 0,
-      count: 0
+      count: 0,
     };
     dayEntry.total += total;
     dayEntry.count += 1;
@@ -436,7 +534,7 @@ export async function getSalesReportData(shopId: string, filters: ReportFilters)
     const monthEntry = monthlyMap.get(saleMonthKey) ?? {
       label: monthLabel(sale.createdAt),
       total: 0,
-      count: 0
+      count: 0,
     };
     monthEntry.total += total;
     monthEntry.count += 1;
@@ -448,15 +546,18 @@ export async function getSalesReportData(shopId: string, filters: ReportFilters)
 
     if (sale.isCreditSale) {
       paymentMethodMap.set(
-        'Customer Credit',
-        roundCurrency((paymentMethodMap.get('Customer Credit') ?? 0) + total)
+        "Customer Credit",
+        roundCurrency((paymentMethodMap.get("Customer Credit") ?? 0) + total),
       );
     }
 
     for (const payment of sale.payments) {
       paymentMethodMap.set(
         payment.method,
-        roundCurrency((paymentMethodMap.get(payment.method) ?? 0) + Number(payment.amount.toString()))
+        roundCurrency(
+          (paymentMethodMap.get(payment.method) ?? 0) +
+            Number(payment.amount.toString()),
+        ),
       );
     }
 
@@ -465,17 +566,17 @@ export async function getSalesReportData(shopId: string, filters: ReportFilters)
       const itemEntry = itemMap.get(item.productId) ?? {
         name: item.productName,
         qty: 0,
-        revenue: 0
+        revenue: 0,
       };
       itemEntry.qty += item.qty;
       itemEntry.revenue += lineRevenue;
       itemMap.set(item.productId, itemEntry);
 
-      const categoryName = item.product.category?.name ?? 'Uncategorized';
+      const categoryName = formatCategoryRelationPath(item.product.category);
       const categoryEntry = categoryMap.get(categoryName) ?? {
         name: categoryName,
         qty: 0,
-        revenue: 0
+        revenue: 0,
       };
       categoryEntry.qty += item.qty;
       categoryEntry.revenue += lineRevenue;
@@ -483,19 +584,23 @@ export async function getSalesReportData(shopId: string, filters: ReportFilters)
     }
   }
 
-  const totalRevenue = roundCurrency(sales.reduce((sum, sale) => sum + Number(sale.totalAmount.toString()), 0));
+  const totalRevenue = roundCurrency(
+    sales.reduce((sum, sale) => sum + Number(sale.totalAmount.toString()), 0),
+  );
   const transactionCount = sales.length;
 
   return {
     summary: {
       revenue: totalRevenue,
       transactionCount,
-      averageTicket: transactionCount ? roundCurrency(totalRevenue / transactionCount) : 0,
+      averageTicket: transactionCount
+        ? roundCurrency(totalRevenue / transactionCount)
+        : 0,
       creditSales: roundCurrency(
         sales
           .filter((sale) => sale.isCreditSale)
-          .reduce((sum, sale) => sum + Number(sale.totalAmount.toString()), 0)
-      )
+          .reduce((sum, sale) => sum + Number(sale.totalAmount.toString()), 0),
+      ),
     },
     dailySales: [...dailyMap.entries()]
       .sort((left, right) => left[0].localeCompare(right[0]))
@@ -511,44 +616,61 @@ export async function getSalesReportData(shopId: string, filters: ReportFilters)
       .sort((left, right) => right.total - left.total),
     topItems: [...itemMap.entries()]
       .map(([productId, value]) => ({ productId, ...value }))
-      .sort((left, right) => right.qty - left.qty || right.revenue - left.revenue)
+      .sort(
+        (left, right) => right.qty - left.qty || right.revenue - left.revenue,
+      )
       .slice(0, 12),
     topCategories: [...categoryMap.entries()]
       .map(([key, value]) => ({ key, ...value }))
       .sort((left, right) => right.revenue - left.revenue)
       .slice(0, 10),
-    topCashiers: sales.reduce<Array<{ cashierId: string; cashierName: string; total: number; count: number }>>((summary, sale) => {
-      const cashierId = sale.cashierUser?.id ?? 'unknown';
-      const existing = summary.find((entry) => entry.cashierId === cashierId);
-      const amount = Number(sale.totalAmount.toString());
+    topCashiers: sales
+      .reduce<
+        Array<{
+          cashierId: string;
+          cashierName: string;
+          total: number;
+          count: number;
+        }>
+      >((summary, sale) => {
+        const cashierId = sale.cashierUser?.id ?? "unknown";
+        const existing = summary.find((entry) => entry.cashierId === cashierId);
+        const amount = Number(sale.totalAmount.toString());
 
-      if (existing) {
-        existing.total += amount;
-        existing.count += 1;
-        return summary;
-      }
-
-      return [
-        ...summary,
-        {
-          cashierId,
-          cashierName: cashierLabel(sale.cashierUser),
-          total: amount,
-          count: 1
+        if (existing) {
+          existing.total += amount;
+          existing.count += 1;
+          return summary;
         }
-      ];
-    }, []).sort((left, right) => right.total - left.total)
+
+        return [
+          ...summary,
+          {
+            cashierId,
+            cashierName: cashierLabel(sale.cashierUser),
+            total: amount,
+            count: 1,
+          },
+        ];
+      }, [])
+      .sort((left, right) => right.total - left.total),
   };
 }
 
-export async function getInventoryReportData(shopId: string, filters: ReportFilters) {
+export async function getInventoryReportData(
+  shopId: string,
+  filters: ReportFilters,
+) {
+  const categoryIds = filters.categoryId
+    ? await resolveCategoryFilterIds(shopId, filters.categoryId)
+    : [];
   const productWhere: Prisma.ProductWhereInput = {
     shopId,
-    isActive: true
+    isActive: true,
   };
 
   if (filters.categoryId) {
-    productWhere.categoryId = filters.categoryId;
+    productWhere.categoryId = { in: categoryIds };
   }
 
   if (filters.productId) {
@@ -559,12 +681,12 @@ export async function getInventoryReportData(shopId: string, filters: ReportFilt
     prisma.shopSetting.findUnique({
       where: { shopId },
       select: {
-        lowStockThreshold: true
-      }
+        lowStockThreshold: true,
+      },
     }),
     prisma.product.findMany({
       where: productWhere,
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
       select: {
         id: true,
         name: true,
@@ -574,34 +696,42 @@ export async function getInventoryReportData(shopId: string, filters: ReportFilt
         price: true,
         category: {
           select: {
-            name: true
-          }
-        }
-      }
+            name: true,
+            parent: {
+              select: { name: true },
+            },
+          },
+        },
+      },
     }),
     prisma.saleItem.findMany({
       where: {
         sale: {
           shopId,
-          status: 'COMPLETED',
-          createdAt: { gte: filters.from, lte: filters.to }
+          status: "COMPLETED",
+          createdAt: { gte: filters.from, lte: filters.to },
         },
-        ...(filters.categoryId ? { product: { categoryId: filters.categoryId } } : {}),
-        ...(filters.productId ? { productId: filters.productId } : {})
+        ...(filters.categoryId
+          ? { product: { categoryId: { in: categoryIds } } }
+          : {}),
+        ...(filters.productId ? { productId: filters.productId } : {}),
       },
       select: {
         productId: true,
         qty: true,
-        lineTotal: true
-      }
-    })
+        lineTotal: true,
+      },
+    }),
   ]);
 
   const lowStockThreshold = settings?.lowStockThreshold ?? 5;
   const salesByProduct = new Map<string, { qty: number; revenue: number }>();
 
   for (const item of saleItems) {
-    const current = salesByProduct.get(item.productId) ?? { qty: 0, revenue: 0 };
+    const current = salesByProduct.get(item.productId) ?? {
+      qty: 0,
+      revenue: 0,
+    };
     current.qty += item.qty;
     current.revenue += Number(item.lineTotal.toString());
     salesByProduct.set(item.productId, current);
@@ -609,15 +739,23 @@ export async function getInventoryReportData(shopId: string, filters: ReportFilt
 
   const productRows = products.map((product) => {
     const sold = salesByProduct.get(product.id) ?? { qty: 0, revenue: 0 };
-    const costValue = roundCurrency(product.stockQty * Number(product.cost.toString()));
-    const sellValue = roundCurrency(product.stockQty * Number(product.price.toString()));
-    const stockLevel = getStockLevel(product.stockQty, product.reorderPoint, lowStockThreshold);
-    const isLowStock = stockLevel !== 'IN_STOCK';
+    const costValue = roundCurrency(
+      product.stockQty * Number(product.cost.toString()),
+    );
+    const sellValue = roundCurrency(
+      product.stockQty * Number(product.price.toString()),
+    );
+    const stockLevel = getStockLevel(
+      product.stockQty,
+      product.reorderPoint,
+      lowStockThreshold,
+    );
+    const isLowStock = stockLevel !== "IN_STOCK";
 
     return {
       id: product.id,
       name: product.name,
-      categoryName: product.category?.name ?? 'Uncategorized',
+      categoryName: formatCategoryRelationPath(product.category),
       stockQty: product.stockQty,
       reorderPoint: product.reorderPoint,
       stockLevel,
@@ -627,26 +765,38 @@ export async function getInventoryReportData(shopId: string, filters: ReportFilt
       costValue,
       sellValue,
       unitCost: Number(product.cost.toString()),
-      unitPrice: Number(product.price.toString())
+      unitPrice: Number(product.price.toString()),
     };
   });
 
   return {
     summary: {
-      inventoryValuation: roundCurrency(productRows.reduce((sum, product) => sum + product.costValue, 0)),
+      inventoryValuation: roundCurrency(
+        productRows.reduce((sum, product) => sum + product.costValue, 0),
+      ),
       activeProducts: productRows.length,
       lowMovementCount: productRows.filter(
-        (product) => product.soldQty > 0 && product.soldQty <= LOW_MOVEMENT_QTY_THRESHOLD
+        (product) =>
+          product.soldQty > 0 && product.soldQty <= LOW_MOVEMENT_QTY_THRESHOLD,
       ).length,
-      deadStockCount: productRows.filter((product) => product.soldQty === 0 && product.stockQty > 0).length,
-      totalUnitsOnHand: productRows.reduce((sum, product) => sum + product.stockQty, 0),
-      costValue: roundCurrency(productRows.reduce((sum, product) => sum + product.costValue, 0)),
-      sellValue: roundCurrency(productRows.reduce((sum, product) => sum + product.sellValue, 0)),
+      deadStockCount: productRows.filter(
+        (product) => product.soldQty === 0 && product.stockQty > 0,
+      ).length,
+      totalUnitsOnHand: productRows.reduce(
+        (sum, product) => sum + product.stockQty,
+        0,
+      ),
+      costValue: roundCurrency(
+        productRows.reduce((sum, product) => sum + product.costValue, 0),
+      ),
+      sellValue: roundCurrency(
+        productRows.reduce((sum, product) => sum + product.sellValue, 0),
+      ),
       lowStockValueAtRisk: roundCurrency(
         productRows
           .filter((product) => product.isLowStock)
-          .reduce((sum, product) => sum + product.sellValue, 0)
-      )
+          .reduce((sum, product) => sum + product.sellValue, 0),
+      ),
     },
     valuationRows: productRows
       .filter((product) => product.stockQty > 0)
@@ -657,27 +807,39 @@ export async function getInventoryReportData(shopId: string, filters: ReportFilt
       .sort((left, right) => right.sellValue - left.sellValue)
       .slice(0, 20),
     lowMovement: productRows
-      .filter((product) => product.soldQty > 0 && product.soldQty <= LOW_MOVEMENT_QTY_THRESHOLD)
-      .sort((left, right) => left.soldQty - right.soldQty || left.soldRevenue - right.soldRevenue)
+      .filter(
+        (product) =>
+          product.soldQty > 0 && product.soldQty <= LOW_MOVEMENT_QTY_THRESHOLD,
+      )
+      .sort(
+        (left, right) =>
+          left.soldQty - right.soldQty || left.soldRevenue - right.soldRevenue,
+      )
       .slice(0, 20),
     deadStock: productRows
       .filter((product) => product.soldQty === 0 && product.stockQty > 0)
       .sort((left, right) => right.costValue - left.costValue)
-      .slice(0, 20)
+      .slice(0, 20),
   };
 }
 
-export async function getProfitReportData(shopId: string, filters: ReportFilters) {
+export async function getProfitReportData(
+  shopId: string,
+  filters: ReportFilters,
+) {
+  const categoryIds = filters.categoryId
+    ? await resolveCategoryFilterIds(shopId, filters.categoryId)
+    : [];
   const saleItemWhere: Prisma.SaleItemWhereInput = {
     sale: {
       shopId,
-      status: 'COMPLETED',
-      createdAt: { gte: filters.from, lte: filters.to }
-    }
+      status: "COMPLETED",
+      createdAt: { gte: filters.from, lte: filters.to },
+    },
   };
 
   if (filters.categoryId) {
-    saleItemWhere.product = { categoryId: filters.categoryId };
+    saleItemWhere.product = { categoryId: { in: categoryIds } };
   }
 
   if (filters.productId) {
@@ -685,16 +847,16 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
   }
 
   const returnItemWhere: Prisma.SaleAdjustmentItemWhereInput = {
-    itemType: 'RETURN',
+    itemType: "RETURN",
     saleAdjustment: {
       shopId,
-      type: { in: ['REFUND', 'EXCHANGE'] },
-      createdAt: { gte: filters.from, lte: filters.to }
-    }
+      type: { in: ["REFUND", "EXCHANGE"] },
+      createdAt: { gte: filters.from, lte: filters.to },
+    },
   };
 
   if (filters.categoryId) {
-    returnItemWhere.product = { categoryId: filters.categoryId };
+    returnItemWhere.product = { categoryId: { in: categoryIds } };
   }
 
   if (filters.productId) {
@@ -715,19 +877,22 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
             saleNumber: true,
             createdAt: true,
             subtotal: true,
-            discountAmount: true
-          }
+            discountAmount: true,
+          },
         },
         product: {
           select: {
             category: {
               select: {
-                name: true
-              }
-            }
-          }
-        }
-      }
+                name: true,
+                parent: {
+                  select: { name: true },
+                },
+              },
+            },
+          },
+        },
+      },
     }),
     prisma.saleAdjustmentItem.findMany({
       where: returnItemWhere,
@@ -743,10 +908,10 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
               select: {
                 id: true,
                 saleNumber: true,
-                createdAt: true
-              }
-            }
-          }
+                createdAt: true,
+              },
+            },
+          },
         },
         saleItem: {
           select: {
@@ -756,34 +921,41 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
             sale: {
               select: {
                 subtotal: true,
-                discountAmount: true
-              }
-            }
-          }
+                discountAmount: true,
+              },
+            },
+          },
         },
         product: {
           select: {
             category: {
               select: {
-                name: true
-              }
-            }
-          }
-        }
-      }
-    })
+                name: true,
+                parent: {
+                  select: { name: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
   ]);
 
-  const productIds = [...new Set([
-    ...saleItems.map((item) => item.productId),
-    ...returnItems.map((item) => item.productId).filter((productId): productId is string => Boolean(productId))
-  ])];
+  const productIds = [
+    ...new Set([
+      ...saleItems.map((item) => item.productId),
+      ...returnItems
+        .map((item) => item.productId)
+        .filter((productId): productId is string => Boolean(productId)),
+    ]),
+  ];
 
   const products = productIds.length
     ? await prisma.product.findMany({
         where: {
           shopId,
-          id: { in: productIds }
+          id: { in: productIds },
         },
         select: {
           id: true,
@@ -792,44 +964,59 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
             select: {
               effectiveDate: true,
               previousCost: true,
-              newCost: true
+              newCost: true,
             },
-            orderBy: { effectiveDate: 'asc' }
-          }
-        }
+            orderBy: { effectiveDate: "asc" },
+          },
+        },
       })
     : [];
   const costTimelines = buildCostTimelineMap(products);
 
-  const dailyMap = new Map<string, { label: string; revenue: number; cost: number; profit: number }>();
-  const monthlyMap = new Map<string, { label: string; revenue: number; cost: number; profit: number }>();
-  const saleMap = new Map<string, {
-    saleId: string;
-    saleNumber: string;
-    saleDate: Date;
-    lastActivityAt: Date;
-    revenue: number;
-    cost: number;
-    profit: number;
-    qty: number;
-    returnCount: number;
-  }>();
-  const itemMap = new Map<string, {
-    productId: string;
-    name: string;
-    categoryName: string;
-    qty: number;
-    revenue: number;
-    cost: number;
-    profit: number;
-  }>();
-  const categoryMap = new Map<string, {
-    name: string;
-    qty: number;
-    revenue: number;
-    cost: number;
-    profit: number;
-  }>();
+  const dailyMap = new Map<
+    string,
+    { label: string; revenue: number; cost: number; profit: number }
+  >();
+  const monthlyMap = new Map<
+    string,
+    { label: string; revenue: number; cost: number; profit: number }
+  >();
+  const saleMap = new Map<
+    string,
+    {
+      saleId: string;
+      saleNumber: string;
+      saleDate: Date;
+      lastActivityAt: Date;
+      revenue: number;
+      cost: number;
+      profit: number;
+      qty: number;
+      returnCount: number;
+    }
+  >();
+  const itemMap = new Map<
+    string,
+    {
+      productId: string;
+      name: string;
+      categoryName: string;
+      qty: number;
+      revenue: number;
+      cost: number;
+      profit: number;
+    }
+  >();
+  const categoryMap = new Map<
+    string,
+    {
+      name: string;
+      qty: number;
+      revenue: number;
+      cost: number;
+      profit: number;
+    }
+  >();
 
   let totalRevenue = 0;
   let totalCost = 0;
@@ -845,7 +1032,7 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
     qtyDelta,
     revenueDelta,
     costDelta,
-    countsAsReturn
+    countsAsReturn,
   }: {
     saleId: string;
     saleNumber: string;
@@ -870,7 +1057,7 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
       label: dayLabel(activityAt),
       revenue: 0,
       cost: 0,
-      profit: 0
+      profit: 0,
     };
     dayEntry.revenue = roundCurrency(dayEntry.revenue + revenueDelta);
     dayEntry.cost = roundCurrency(dayEntry.cost + costDelta);
@@ -881,7 +1068,7 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
       label: monthLabel(activityAt),
       revenue: 0,
       cost: 0,
-      profit: 0
+      profit: 0,
     };
     monthEntry.revenue = roundCurrency(monthEntry.revenue + revenueDelta);
     monthEntry.cost = roundCurrency(monthEntry.cost + costDelta);
@@ -897,9 +1084,12 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
       cost: 0,
       profit: 0,
       qty: 0,
-      returnCount: 0
+      returnCount: 0,
     };
-    saleEntry.lastActivityAt = saleEntry.lastActivityAt > activityAt ? saleEntry.lastActivityAt : activityAt;
+    saleEntry.lastActivityAt =
+      saleEntry.lastActivityAt > activityAt
+        ? saleEntry.lastActivityAt
+        : activityAt;
     saleEntry.revenue = roundCurrency(saleEntry.revenue + revenueDelta);
     saleEntry.cost = roundCurrency(saleEntry.cost + costDelta);
     saleEntry.profit = roundCurrency(saleEntry.profit + profitDelta);
@@ -914,7 +1104,7 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
       qty: 0,
       revenue: 0,
       cost: 0,
-      profit: 0
+      profit: 0,
     };
     itemEntry.qty += qtyDelta;
     itemEntry.revenue = roundCurrency(itemEntry.revenue + revenueDelta);
@@ -927,7 +1117,7 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
       qty: 0,
       revenue: 0,
       cost: 0,
-      profit: 0
+      profit: 0,
     };
     categoryEntry.qty += qtyDelta;
     categoryEntry.revenue = roundCurrency(categoryEntry.revenue + revenueDelta);
@@ -943,9 +1133,13 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
     const revenue = calculateNetLineRevenue({
       lineSubtotal,
       saleSubtotal,
-      saleDiscount
+      saleDiscount,
     });
-    const unitCost = resolveCostAtDate(costTimelines, item.productId, item.sale.createdAt);
+    const unitCost = resolveCostAtDate(
+      costTimelines,
+      item.productId,
+      item.sale.createdAt,
+    );
     const cost = roundCurrency(item.qty * unitCost);
 
     applyContribution({
@@ -955,11 +1149,11 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
       activityAt: item.sale.createdAt,
       productId: item.productId,
       productName: item.productName,
-      categoryName: item.product.category?.name ?? 'Uncategorized',
+      categoryName: formatCategoryRelationPath(item.product.category),
       qtyDelta: item.qty,
       revenueDelta: revenue,
       costDelta: cost,
-      countsAsReturn: false
+      countsAsReturn: false,
     });
   }
 
@@ -974,15 +1168,20 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
     const originalLineNetRevenue = calculateNetLineRevenue({
       lineSubtotal: originalLineSubtotal,
       saleSubtotal: originalSaleSubtotal,
-      saleDiscount: originalSaleDiscount
+      saleDiscount: originalSaleDiscount,
     });
     const returnedRevenue =
       item.saleItem.qty > 0
         ? roundCurrency((originalLineNetRevenue / item.saleItem.qty) * item.qty)
         : 0;
-    const unitCost = resolveCostAtDate(costTimelines, item.productId, item.saleAdjustment.sale.createdAt);
+    const unitCost = resolveCostAtDate(
+      costTimelines,
+      item.productId,
+      item.saleAdjustment.sale.createdAt,
+    );
     const returnedCost = roundCurrency(item.qty * unitCost);
-    const costDelta = item.disposition === 'RESTOCK' ? roundCurrency(returnedCost * -1) : 0;
+    const costDelta =
+      item.disposition === "RESTOCK" ? roundCurrency(returnedCost * -1) : 0;
 
     applyContribution({
       saleId: item.saleAdjustment.sale.id,
@@ -991,11 +1190,11 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
       activityAt: item.saleAdjustment.createdAt,
       productId: item.productId,
       productName: item.saleItem.productName,
-      categoryName: item.product?.category?.name ?? 'Uncategorized',
+      categoryName: formatCategoryRelationPath(item.product?.category),
       qtyDelta: item.qty * -1,
       revenueDelta: roundCurrency(returnedRevenue * -1),
       costDelta,
-      countsAsReturn: true
+      countsAsReturn: true,
     });
   }
 
@@ -1008,7 +1207,10 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
       revenue: roundedRevenue,
       costOfGoods: roundedCost,
       grossProfit: roundedProfit,
-      grossMarginPercent: roundedRevenue > 0 ? roundCurrency((roundedProfit / roundedRevenue) * 100) : 0
+      grossMarginPercent:
+        roundedRevenue > 0
+          ? roundCurrency((roundedProfit / roundedRevenue) * 100)
+          : 0,
     },
     dailyProfit: [...dailyMap.entries()]
       .sort((left, right) => left[0].localeCompare(right[0]))
@@ -1019,38 +1221,56 @@ export async function getProfitReportData(shopId: string, filters: ReportFilters
     profitPerSale: [...saleMap.values()]
       .map((entry) => ({
         ...entry,
-        marginPercent: entry.revenue > 0 ? roundCurrency((entry.profit / entry.revenue) * 100) : 0
+        marginPercent:
+          entry.revenue > 0
+            ? roundCurrency((entry.profit / entry.revenue) * 100)
+            : 0,
       }))
-      .sort((left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime())
+      .sort(
+        (left, right) =>
+          right.lastActivityAt.getTime() - left.lastActivityAt.getTime(),
+      )
       .slice(0, 25),
     profitPerItem: [...itemMap.values()]
       .map((entry) => ({
         ...entry,
-        marginPercent: entry.revenue > 0 ? roundCurrency((entry.profit / entry.revenue) * 100) : 0
+        marginPercent:
+          entry.revenue > 0
+            ? roundCurrency((entry.profit / entry.revenue) * 100)
+            : 0,
       }))
       .sort((left, right) => right.profit - left.profit)
       .slice(0, 15),
     profitPerCategory: [...categoryMap.values()]
       .map((entry) => ({
         ...entry,
-        marginPercent: entry.revenue > 0 ? roundCurrency((entry.profit / entry.revenue) * 100) : 0
+        marginPercent:
+          entry.revenue > 0
+            ? roundCurrency((entry.profit / entry.revenue) * 100)
+            : 0,
       }))
       .sort((left, right) => right.profit - left.profit),
     topProfitableItems: [...itemMap.values()]
       .map((entry) => ({
         ...entry,
-        marginPercent: entry.revenue > 0 ? roundCurrency((entry.profit / entry.revenue) * 100) : 0
+        marginPercent:
+          entry.revenue > 0
+            ? roundCurrency((entry.profit / entry.revenue) * 100)
+            : 0,
       }))
       .sort((left, right) => right.profit - left.profit)
-      .slice(0, 15)
+      .slice(0, 15),
   };
 }
 
-export async function getCashierReportData(shopId: string, filters: ReportFilters) {
+export async function getCashierReportData(
+  shopId: string,
+  filters: ReportFilters,
+) {
   const salesWhere: Prisma.SaleWhereInput = {
     shopId,
-    status: 'COMPLETED',
-    createdAt: { gte: filters.from, lte: filters.to }
+    status: "COMPLETED",
+    createdAt: { gte: filters.from, lte: filters.to },
   };
 
   if (filters.cashierId) {
@@ -1059,7 +1279,7 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
 
   const adjustmentsWhere: Prisma.SaleAdjustmentWhereInput = {
     shopId,
-    createdAt: { gte: filters.from, lte: filters.to }
+    createdAt: { gte: filters.from, lte: filters.to },
   };
 
   if (filters.cashierId) {
@@ -1068,7 +1288,7 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
 
   const cashSessionWhere: Prisma.CashSessionWhereInput = {
     shopId,
-    openedAt: { gte: filters.from, lte: filters.to }
+    openedAt: { gte: filters.from, lte: filters.to },
   };
 
   if (filters.cashierId) {
@@ -1078,7 +1298,7 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
   const [sales, adjustments, cashSessions] = await Promise.all([
     prisma.sale.findMany({
       where: salesWhere,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         createdAt: true,
@@ -1087,19 +1307,19 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         items: {
           select: {
-            qty: true
-          }
-        }
-      }
+            qty: true,
+          },
+        },
+      },
     }),
     prisma.saleAdjustment.findMany({
       where: adjustmentsWhere,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         adjustmentNumber: true,
@@ -1109,28 +1329,28 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
         createdAt: true,
         sale: {
           select: {
-            saleNumber: true
-          }
+            saleNumber: true,
+          },
         },
         createdByUser: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         approvedByUser: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
-        }
-      }
+            email: true,
+          },
+        },
+      },
     }),
     prisma.cashSession.findMany({
       where: cashSessionWhere,
-      orderBy: [{ openedAt: 'desc' }],
+      orderBy: [{ openedAt: "desc" }],
       select: {
         id: true,
         openedAt: true,
@@ -1144,29 +1364,37 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
           select: {
             id: true,
             name: true,
-            email: true
-          }
-        }
-      }
-    })
+            email: true,
+          },
+        },
+      },
+    }),
   ]);
 
-  const cashierMap = new Map<string, {
-    cashierId: string;
-    cashierName: string;
-    salesCount: number;
-    revenueHandled: number;
-    totalItems: number;
-    refundCount: number;
-    voidCount: number;
-    shiftCount: number;
-    shiftExpected: number;
-    shiftActual: number;
-    shiftVariance: number;
-  }>();
+  const cashierMap = new Map<
+    string,
+    {
+      cashierId: string;
+      cashierName: string;
+      salesCount: number;
+      revenueHandled: number;
+      totalItems: number;
+      refundCount: number;
+      voidCount: number;
+      shiftCount: number;
+      shiftExpected: number;
+      shiftActual: number;
+      shiftVariance: number;
+    }
+  >();
 
-  const ensureCashierEntry = (cashier: { id: string; name: string | null; email: string | null } | null | undefined) => {
-    const cashierId = cashier?.id ?? 'unknown';
+  const ensureCashierEntry = (
+    cashier:
+      | { id: string; name: string | null; email: string | null }
+      | null
+      | undefined,
+  ) => {
+    const cashierId = cashier?.id ?? "unknown";
     const existing = cashierMap.get(cashierId);
     if (existing) {
       return existing;
@@ -1183,7 +1411,7 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
       shiftCount: 0,
       shiftExpected: 0,
       shiftActual: 0,
-      shiftVariance: 0
+      shiftVariance: 0,
     };
     cashierMap.set(cashierId, created);
     return created;
@@ -1192,12 +1420,14 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
   for (const sale of sales) {
     const entry = ensureCashierEntry(sale.cashierUser);
     entry.salesCount += 1;
-    entry.revenueHandled = roundCurrency(entry.revenueHandled + Number(sale.totalAmount.toString()));
+    entry.revenueHandled = roundCurrency(
+      entry.revenueHandled + Number(sale.totalAmount.toString()),
+    );
     entry.totalItems += sale.items.reduce((sum, item) => sum + item.qty, 0);
   }
 
   const refunds = adjustments
-    .filter((entry) => entry.type === 'REFUND' || entry.type === 'EXCHANGE')
+    .filter((entry) => entry.type === "REFUND" || entry.type === "EXCHANGE")
     .map((entry) => {
       const cashierEntry = ensureCashierEntry(entry.createdByUser);
       cashierEntry.refundCount += 1;
@@ -1211,12 +1441,12 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
         createdAt: entry.createdAt,
         saleNumber: entry.sale.saleNumber,
         cashierName: cashierLabel(entry.createdByUser),
-        approvedByName: cashierLabel(entry.approvedByUser)
+        approvedByName: cashierLabel(entry.approvedByUser),
       };
     });
 
   const voids = adjustments
-    .filter((entry) => entry.type === 'VOID')
+    .filter((entry) => entry.type === "VOID")
     .map((entry) => {
       const cashierEntry = ensureCashierEntry(entry.createdByUser);
       cashierEntry.voidCount += 1;
@@ -1229,16 +1459,22 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
         createdAt: entry.createdAt,
         saleNumber: entry.sale.saleNumber,
         cashierName: cashierLabel(entry.createdByUser),
-        approvedByName: cashierLabel(entry.approvedByUser)
+        approvedByName: cashierLabel(entry.approvedByUser),
       };
     });
 
   const shiftSessions = cashSessions.map((session) => {
     const cashierEntry = ensureCashierEntry(session.user);
     cashierEntry.shiftCount += 1;
-    cashierEntry.shiftExpected = roundCurrency(cashierEntry.shiftExpected + toNumber(session.closingExpected));
-    cashierEntry.shiftActual = roundCurrency(cashierEntry.shiftActual + toNumber(session.closingActual));
-    cashierEntry.shiftVariance = roundCurrency(cashierEntry.shiftVariance + toNumber(session.variance));
+    cashierEntry.shiftExpected = roundCurrency(
+      cashierEntry.shiftExpected + toNumber(session.closingExpected),
+    );
+    cashierEntry.shiftActual = roundCurrency(
+      cashierEntry.shiftActual + toNumber(session.closingActual),
+    );
+    cashierEntry.shiftVariance = roundCurrency(
+      cashierEntry.shiftVariance + toNumber(session.variance),
+    );
 
     return {
       id: session.id,
@@ -1250,29 +1486,42 @@ export async function getCashierReportData(shopId: string, filters: ReportFilter
       openingFloat: toNumber(session.openingFloat),
       closingExpected: toNumber(session.closingExpected),
       closingActual: toNumber(session.closingActual),
-      variance: toNumber(session.variance)
+      variance: toNumber(session.variance),
     };
   });
 
   return {
     summary: {
-      totalRevenue: roundCurrency(sales.reduce((sum, sale) => sum + Number(sale.totalAmount.toString()), 0)),
+      totalRevenue: roundCurrency(
+        sales.reduce(
+          (sum, sale) => sum + Number(sale.totalAmount.toString()),
+          0,
+        ),
+      ),
       totalTransactions: sales.length,
-      refundTotal: roundCurrency(refunds.reduce((sum, entry) => sum + entry.totalAmount, 0)),
-      voidTotal: roundCurrency(voids.reduce((sum, entry) => sum + entry.totalAmount, 0)),
+      refundTotal: roundCurrency(
+        refunds.reduce((sum, entry) => sum + entry.totalAmount, 0),
+      ),
+      voidTotal: roundCurrency(
+        voids.reduce((sum, entry) => sum + entry.totalAmount, 0),
+      ),
       refundCount: refunds.length,
       voidCount: voids.length,
-      shiftCount: shiftSessions.length
+      shiftCount: shiftSessions.length,
     },
     topCashiers: [...cashierMap.values()]
       .sort((left, right) => right.revenueHandled - left.revenueHandled)
       .map((entry) => ({
         ...entry,
-        averageTicket: entry.salesCount ? roundCurrency(entry.revenueHandled / entry.salesCount) : 0,
-        averageBasketSize: entry.salesCount ? roundCurrency(entry.totalItems / entry.salesCount) : 0
+        averageTicket: entry.salesCount
+          ? roundCurrency(entry.revenueHandled / entry.salesCount)
+          : 0,
+        averageBasketSize: entry.salesCount
+          ? roundCurrency(entry.totalItems / entry.salesCount)
+          : 0,
       })),
     shiftSessions,
     refunds,
-    voids
+    voids,
   };
 }

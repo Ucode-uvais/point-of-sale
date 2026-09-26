@@ -1,6 +1,12 @@
 "use client";
 
-import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import Image from "next/image";
 import Button from "@/components/ui/Button";
@@ -15,7 +21,12 @@ import {
   getMarginSummary,
 } from "@/lib/product-merchandising";
 
-type Category = { id: string; name: string; parentId: string | null };
+type Category = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  isActive: boolean;
+};
 type UnitOfMeasure = {
   id: string;
   code: string;
@@ -114,7 +125,7 @@ type ImageDraft = {
 };
 
 const selectClassName =
-  "h-11 w-full rounded-2xl border border-stone-200 bg-white/88 px-4 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition hover:border-stone-300 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10";
+  "h-11 w-full rounded-2xl border border-stone-200 bg-white/88 px-4 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition hover:border-stone-300 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400";
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
@@ -273,6 +284,92 @@ export default function ProductManager({
   const [loading, setLoading] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
 
+  const categoryById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
+    [categories],
+  );
+  const topLevelCategories = useMemo(
+    () =>
+      [...categories]
+        .filter((category) => !category.parentId)
+        .sort((left, right) =>
+          left.name.localeCompare(right.name, undefined, {
+            sensitivity: "base",
+          }),
+        ),
+    [categories],
+  );
+  const activeTopLevelCategories = useMemo(
+    () => topLevelCategories.filter((category) => category.isActive),
+    [topLevelCategories],
+  );
+  const childrenByParentId = useMemo(() => {
+    const grouped = new Map<string, Category[]>();
+
+    for (const category of categories) {
+      if (!category.parentId) continue;
+      const parent = categoryById.get(category.parentId);
+
+      if (!parent || parent.parentId) {
+        continue;
+      }
+
+      const children = grouped.get(parent.id) ?? [];
+      children.push(category);
+      grouped.set(parent.id, children);
+    }
+
+    for (const [parentId, children] of grouped) {
+      grouped.set(
+        parentId,
+        [...children].sort((left, right) =>
+          left.name.localeCompare(right.name, undefined, {
+            sensitivity: "base",
+          }),
+        ),
+      );
+    }
+
+    return grouped;
+  }, [categories, categoryById]);
+
+  const selectedCategory = form.categoryId
+    ? (categoryById.get(form.categoryId) ?? null)
+    : null;
+  const selectedMainCategory = selectedCategory
+    ? selectedCategory.parentId
+      ? (categoryById.get(selectedCategory.parentId) ?? null)
+      : selectedCategory
+    : null;
+  const selectedMainCategoryId = selectedMainCategory?.id ?? "";
+  const selectedSubcategory =
+    selectedCategory?.parentId === selectedMainCategoryId
+      ? selectedCategory
+      : null;
+  const activeSubcategories = selectedMainCategoryId
+    ? (childrenByParentId.get(selectedMainCategoryId) ?? []).filter(
+        (category) =>
+          category.isActive &&
+          selectedMainCategory?.isActive &&
+          !categoryById.get(category.parentId ?? "")?.parentId,
+      )
+    : [];
+
+  const currentMainCategoryIsArchived =
+    Boolean(selectedMainCategory) && !selectedMainCategory?.isActive;
+  const currentSubcategoryIsArchived =
+    Boolean(selectedSubcategory) && !selectedSubcategory?.isActive;
+  const currentHierarchyIsInvalid = Boolean(
+    selectedCategory?.parentId &&
+    (!selectedMainCategory || selectedMainCategory.parentId),
+  );
+  const currentCategoryNeedsAttention =
+    currentMainCategoryIsArchived ||
+    currentSubcategoryIsArchived ||
+    currentHierarchyIsInvalid;
+  const categoryAssignmentChanged =
+    form.categoryId !== (editingProduct?.categoryId ?? "");
+
   const selectedBaseUnit =
     units.find((unit) => unit.id === form.baseUnitOfMeasureId) ?? null;
   const currentMargin = getMarginSummary(
@@ -374,6 +471,31 @@ export default function ProductManager({
 
     if (Number(form.reorderPoint) < 0) {
       setError("Low-stock reorder level must not be negative.");
+      return;
+    }
+
+    if (
+      categoryAssignmentChanged &&
+      selectedSubcategory &&
+      (!selectedSubcategory.isActive ||
+        !selectedMainCategory?.isActive ||
+        Boolean(selectedMainCategory.parentId))
+    ) {
+      setError(
+        "Choose an active main category and subcategory before changing this product's category assignment.",
+      );
+      return;
+    }
+
+    if (
+      categoryAssignmentChanged &&
+      selectedMainCategory &&
+      !selectedSubcategory &&
+      (!selectedMainCategory.isActive || Boolean(selectedMainCategory.parentId))
+    ) {
+      setError(
+        "Choose an active main category before changing this product's category assignment.",
+      );
       return;
     }
 
@@ -575,7 +697,7 @@ export default function ProductManager({
                 <Button
                   type="button"
                   variant="primary"
-                  className="hover:bg-green-900 cursor-pointer"
+                  className="hover:bg-green-900"
                 >
                   Product List
                 </Button>
@@ -603,24 +725,78 @@ export default function ProductManager({
                   />
                 </div>
                 <div>
-                  <FieldLabel>Category</FieldLabel>
+                  <FieldLabel>Main category</FieldLabel>
                   <select
                     className={selectClassName}
-                    value={form.categoryId}
-                    onChange={(event) =>
+                    value={selectedMainCategoryId}
+                    onChange={(event) => {
+                      const nextMainCategoryId = event.target.value;
                       setForm((current) => ({
                         ...current,
-                        categoryId: event.target.value,
-                      }))
-                    }
+                        categoryId: nextMainCategoryId,
+                      }));
+                    }}
                   >
                     <option value="">Uncategorized</option>
-                    {categories.map((category) => (
+                    {selectedMainCategory &&
+                    (currentMainCategoryIsArchived ||
+                      Boolean(selectedMainCategory.parentId)) ? (
+                      <option value={selectedMainCategory.id} disabled>
+                        {selectedMainCategory.name} (
+                        {currentMainCategoryIsArchived
+                          ? "Archived"
+                          : "Legacy hierarchy"}{" "}
+                        - current)
+                      </option>
+                    ) : null}
+                    {activeTopLevelCategories.map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.name}
                       </option>
                     ))}
                   </select>
+                  <div className="mt-1.5 text-xs leading-5 text-stone-500">
+                    Choose the top-level catalog group first.
+                  </div>
+                </div>
+                <div>
+                  <FieldLabel>Subcategory</FieldLabel>
+                  <select
+                    className={selectClassName}
+                    value={selectedSubcategory?.id ?? ""}
+                    disabled={!selectedMainCategoryId}
+                    onChange={(event) => {
+                      const nextSubcategoryId = event.target.value;
+                      setForm((current) => ({
+                        ...current,
+                        categoryId: nextSubcategoryId || selectedMainCategoryId,
+                      }));
+                    }}
+                  >
+                    <option value="">
+                      {selectedMainCategory
+                        ? `No subcategory - use ${selectedMainCategory.name}`
+                        : "Select a main category first"}
+                    </option>
+                    {selectedSubcategory && currentCategoryNeedsAttention ? (
+                      <option value={selectedSubcategory.id} disabled>
+                        {selectedSubcategory.name} (
+                        {currentSubcategoryIsArchived
+                          ? "Archived"
+                          : "Legacy hierarchy"}{" "}
+                        - current)
+                      </option>
+                    ) : null}
+                    {activeSubcategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mt-1.5 text-xs leading-5 text-stone-500">
+                    Optional. Leave this blank to assign the product directly to
+                    the main category.
+                  </div>
                 </div>
                 <div>
                   <FieldLabel>Base selling unit</FieldLabel>
@@ -754,6 +930,35 @@ export default function ProductManager({
                   />
                 </div>
               </div>
+
+              {selectedMainCategory ? (
+                <div
+                  className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${
+                    currentCategoryNeedsAttention
+                      ? "border-amber-200 bg-amber-50 text-amber-800"
+                      : "border-sky-200 bg-sky-50/70 text-sky-800"
+                  }`}
+                >
+                  <div className="font-semibold">
+                    Catalog path: {selectedMainCategory.name}
+                    {selectedSubcategory
+                      ? ` → ${selectedSubcategory.name}`
+                      : ""}
+                  </div>
+                  <div className="mt-1 text-xs leading-5">
+                    {currentCategoryNeedsAttention
+                      ? "This is an existing archived or legacy assignment. It remains visible for reference, but only active categories in the supported two-level hierarchy can be selected for a new assignment."
+                      : selectedSubcategory
+                        ? "The product will be stored against the selected subcategory; its main category is derived from the hierarchy."
+                        : "The product will be assigned directly to this main category."}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-stone-200 bg-white/70 px-4 py-3 text-sm text-stone-500">
+                  This product will remain uncategorized until a main category
+                  is selected.
+                </div>
+              )}
 
               <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.9fr]">
                 <div
