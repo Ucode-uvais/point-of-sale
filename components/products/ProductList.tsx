@@ -7,6 +7,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { money, shortDate } from "@/lib/format";
 import { getStockLevel, stockLevelLabel } from "@/lib/inventory";
 import {
@@ -105,6 +106,8 @@ export default function ProductList({
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+  const [confirmationProduct, setConfirmationProduct] =
+    useState<ProductListItem | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -166,15 +169,20 @@ export default function ProductList({
       ) !== "IN_STOCK",
   ).length;
 
-  async function toggleArchive(product: ProductListItem) {
+  function requestArchiveToggle(product: ProductListItem) {
     if (pendingProductId) {
       return;
     }
 
-    const action = product.isActive ? "Archive" : "Restore";
-    const confirmed = window.confirm(`${action} ${product.name}?`);
+    setError("");
+    setSuccess("");
+    setConfirmationProduct(product);
+  }
 
-    if (!confirmed) {
+  async function confirmArchiveToggle() {
+    const product = confirmationProduct;
+
+    if (!product || pendingProductId) {
       return;
     }
 
@@ -195,6 +203,7 @@ export default function ProductList({
 
       if (!response.ok || !data?.product) {
         setError(data?.error ?? "Unable to update product status.");
+        setConfirmationProduct(null);
         return;
       }
 
@@ -205,8 +214,10 @@ export default function ProductList({
       setSuccess(
         `${product.name} ${data.product.isActive ? "restored" : "archived"} successfully.`,
       );
+      setConfirmationProduct(null);
     } catch {
       setError("Unable to update product status. Please try again.");
+      setConfirmationProduct(null);
     } finally {
       setPendingProductId(null);
     }
@@ -478,7 +489,7 @@ export default function ProductList({
                                 variant="ghost"
                                 className="text-xs uppercase tracking-[0.14em]"
                                 disabled={pendingProductId !== null}
-                                onClick={() => toggleArchive(product)}
+                                onClick={() => requestArchiveToggle(product)}
                               >
                                 {pending
                                   ? "Updating..."
@@ -504,6 +515,33 @@ export default function ProductList({
           ) : null}
         </div>
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(confirmationProduct)}
+        title={
+          confirmationProduct?.isActive
+            ? "Archive product?"
+            : "Restore product?"
+        }
+        description={
+          confirmationProduct ? (
+            <>
+              {confirmationProduct.isActive ? "Archive" : "Restore"}{" "}
+              <span className="font-semibold text-stone-900">
+                {confirmationProduct.name}
+              </span>
+              ?
+            </>
+          ) : null
+        }
+        confirmLabel={confirmationProduct?.isActive ? "Archive" : "Restore"}
+        pending={
+          Boolean(confirmationProduct) &&
+          pendingProductId === confirmationProduct?.id
+        }
+        onConfirm={confirmArchiveToggle}
+        onCancel={() => setConfirmationProduct(null)}
+      />
     </div>
   );
 }

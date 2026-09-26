@@ -33,7 +33,7 @@ function DetailItem({ label, value }: { label: string; value: ReactNode }) {
       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
         {label}
       </div>
-      <div className="mt-1.5 break-words text-sm font-semibold text-stone-900">
+      <div className="mt-1.5 wrap-break-word text-sm font-semibold text-stone-900">
         {value}
       </div>
     </div>
@@ -466,7 +466,7 @@ export default async function ProductDetailsPage({
         />
 
         {product.variants.length ? (
-          <div className="overflow-hidden rounded-[24px] border border-stone-200">
+          <div className="overflow-hidden rounded-3xl border border-stone-200">
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-stone-50 text-stone-500">
@@ -562,7 +562,7 @@ export default async function ProductDetailsPage({
             {product.images.map((image, index) => (
               <figure
                 key={image.id}
-                className="overflow-hidden rounded-[24px] border border-stone-200 bg-white"
+                className="overflow-hidden rounded-3xl border border-stone-200 bg-white"
               >
                 <div className="relative aspect-square bg-stone-50">
                   <Image
@@ -595,7 +595,7 @@ export default async function ProductDetailsPage({
           />
 
           {product.batches.length ? (
-            <div className="overflow-hidden rounded-[24px] border border-stone-200">
+            <div className="overflow-hidden rounded-3xl border border-stone-200">
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-stone-50 text-stone-500">

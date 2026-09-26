@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const actionLinkClassName =
   "inline-flex h-10 items-center justify-center rounded-xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-700 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950 focus:outline-none focus:ring-4 focus:ring-emerald-500/10";
@@ -19,17 +20,11 @@ export default function ProductDetailsActions({
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState("");
 
-  async function toggleArchive() {
+  async function confirmArchiveToggle() {
     if (pending) {
-      return;
-    }
-
-    const action = isActive ? "Archive" : "Restore";
-    const confirmed = window.confirm(`${action} ${productName}?`);
-
-    if (!confirmed) {
       return;
     }
 
@@ -49,12 +44,15 @@ export default function ProductDetailsActions({
 
       if (!response.ok || !data?.product) {
         setError(data?.error ?? "Unable to update product status.");
+        setConfirmOpen(false);
         return;
       }
 
+      setConfirmOpen(false);
       router.refresh();
     } catch {
       setError("Unable to update product status. Please try again.");
+      setConfirmOpen(false);
     } finally {
       setPending(false);
     }
@@ -73,7 +71,10 @@ export default function ProductDetailsActions({
           type="button"
           variant="ghost"
           disabled={pending}
-          onClick={toggleArchive}
+          onClick={() => {
+            setError("");
+            setConfirmOpen(true);
+          }}
         >
           {pending ? "Updating..." : isActive ? "Archive" : "Restore"}
         </Button>
@@ -84,6 +85,21 @@ export default function ProductDetailsActions({
           {error}
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={isActive ? "Archive product?" : "Restore product?"}
+        description={
+          <>
+            {isActive ? "Archive" : "Restore"}{" "}
+            <span className="font-semibold text-stone-900">{productName}</span>?
+          </>
+        }
+        confirmLabel={isActive ? "Archive" : "Restore"}
+        pending={pending}
+        onConfirm={confirmArchiveToggle}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }
