@@ -14,17 +14,15 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ThermalReceipt from "@/components/receipts/ThermalReceipt";
+import QuickCustomerCreateModal, {
+  type QuickCreatedCustomer,
+} from "@/components/checkout/QuickCustomerCreateModal";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import { Select } from "rizzui/select";
-import { getCustomerDisplayName } from "@/lib/customers";
+import { getCustomerDisplayName, getCustomerTypeLabel } from "@/lib/customers";
 import { dateTime, money } from "@/lib/format";
-import {
-  buildCategoryFilterOptions,
-  getCategoryFilterIds,
-  getCategoryPathLabel,
-} from "@/lib/category-presentation";
 import { roundCurrency } from "@/lib/inventory";
 import {
   buildOfflineCheckoutDraftStorageKey,
@@ -56,12 +54,7 @@ import {
   type TaxModeValue,
 } from "@/lib/shop-settings";
 
-type Category = {
-  id: string;
-  name: string;
-  parentId: string | null;
-  isActive: boolean;
-};
+type Category = { id: string; name: string };
 type CategorySelectOption = { label: string; value: string };
 type Product = {
   id: string;
@@ -144,6 +137,13 @@ function isTypingTarget(target: EventTarget | null) {
     tagName === "TEXTAREA" ||
     tagName === "SELECT"
   );
+}
+
+function getCustomerContactInitial(customer: Customer) {
+  const label = getCustomerDisplayName(customer).trim();
+  const firstVisibleCharacter = label.match(/[a-z0-9]/i)?.[0];
+
+  return firstVisibleCharacter?.toUpperCase() ?? "C";
 }
 
 function toNumber(value: string) {
@@ -535,6 +535,12 @@ export default function CheckoutClient({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discountAmount, setDiscountAmount] = useState("0");
   const [customerSearch, setCustomerSearch] = useState("");
+  const [locallyCreatedCustomers, setLocallyCreatedCustomers] = useState<
+    Customer[]
+  >([]);
+  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
+  const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
+  const [customerFeedback, setCustomerFeedback] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     null,
   );
@@ -572,16 +578,12 @@ export default function CheckoutClient({
   const categoryOptions = useMemo<CategorySelectOption[]>(
     () => [
       { label: "All categories", value: "" },
-      ...buildCategoryFilterOptions(categories).map((category) => ({
-        label: category.label,
-        value: category.value,
+      ...categories.map((category) => ({
+        label: category.name,
+        value: category.id,
       })),
     ],
     [categories],
-  );
-  const selectedCategoryIds = useMemo(
-    () => new Set(getCategoryFilterIds(selectedCategory, categories)),
-    [categories, selectedCategory],
   );
 
   const filtered = useMemo(() => {
@@ -589,10 +591,7 @@ export default function CheckoutClient({
     return products
       .filter((product) => {
         const matchesCategory =
-          !selectedCategory ||
-          (product.categoryId
-            ? selectedCategoryIds.has(product.categoryId)
-            : false);
+          !selectedCategory || product.categoryId === selectedCategory;
         const matchesTerm =
           !term ||
           [
@@ -600,7 +599,7 @@ export default function CheckoutClient({
             product.variantLabel ?? "",
             product.barcode ?? "",
             product.sku ?? "",
-            getCategoryPathLabel(product.categoryId, categories),
+            product.category?.name ?? "",
           ]
             .join(" ")
             .toLowerCase()
@@ -608,20 +607,36 @@ export default function CheckoutClient({
         return matchesCategory && matchesTerm;
       })
       .slice(0, 30);
-  }, [categories, products, query, selectedCategory, selectedCategoryIds]);
+  }, [products, query, selectedCategory]);
+
+  const customerRecords = useMemo(() => {
+    if (!locallyCreatedCustomers.length) {
+      return customers;
+    }
+
+    const localCustomerIds = new Set(
+      locallyCreatedCustomers.map((customer) => customer.id),
+    );
+
+    return [
+      ...locallyCreatedCustomers,
+      ...customers.filter((customer) => !localCustomerIds.has(customer.id)),
+    ];
+  }, [customers, locallyCreatedCustomers]);
 
   const selectedCustomer = useMemo(
     () =>
-      customers.find((customer) => customer.id === selectedCustomerId) ?? null,
-    [customers, selectedCustomerId],
+      customerRecords.find((customer) => customer.id === selectedCustomerId) ??
+      null,
+    [customerRecords, selectedCustomerId],
   );
   const filteredCustomers = useMemo(() => {
     const term = customerSearch.trim().toLowerCase();
     if (!term) {
-      return customers.slice(0, 6);
+      return [];
     }
 
-    return customers
+    return customerRecords
       .filter((customer) =>
         [
           getCustomerDisplayName(customer),
@@ -634,8 +649,8 @@ export default function CheckoutClient({
           .toLowerCase()
           .includes(term),
       )
-      .slice(0, 6);
-  }, [customerSearch, customers]);
+      .slice(0, 8);
+  }, [customerSearch, customerRecords]);
 
   const productMap = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
@@ -852,11 +867,51 @@ export default function CheckoutClient({
   }
 
   function selectCustomer(customer: Customer) {
+    setCustomerFeedback("");
+    setCustomerSearchOpen(false);
     setSelectedCustomerId(customer.id);
     setCustomerSearch(getCustomerDisplayName(customer));
     setCustomerName(getCustomerDisplayName(customer));
     setCustomerPhone(customer.phone ?? "");
     setError("");
+  }
+
+  function handleQuickCustomerCreated(customer: QuickCreatedCustomer) {
+    const createdCustomer: Customer = {
+      id: customer.id,
+      type: customer.type,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      businessName: customer.businessName,
+      contactPerson: customer.contactPerson,
+      phone: customer.phone,
+      email: customer.email,
+      loyaltyBalance: 0,
+      receivableBalance: "0",
+      lastPurchaseAt: null,
+    };
+
+    setLocallyCreatedCustomers((current) => [
+      createdCustomer,
+      ...current.filter((entry) => entry.id !== createdCustomer.id),
+    ]);
+
+    // Phase 4: attach immediately without navigating or resetting any sale state.
+    selectCustomer(createdCustomer);
+    setCustomerFeedback("Customer created and attached to this sale.");
+  }
+
+  function handleQuickUseExisting(customerId: string) {
+    const existingCustomer =
+      customerRecords.find((customer) => customer.id === customerId) ?? null;
+
+    if (!existingCustomer) {
+      setError("That customer is no longer available in checkout.");
+      return;
+    }
+
+    selectCustomer(existingCustomer);
+    setCustomerFeedback("Existing customer attached to this sale.");
   }
 
   function addToCart(product: Product) {
@@ -1464,7 +1519,7 @@ export default function CheckoutClient({
         setCustomerSearch(
           parkedSale.customerId
             ? getCustomerDisplayName(
-                customers.find(
+                customerRecords.find(
                   (customer) => customer.id === parkedSale.customerId,
                 ) ?? {},
               )
@@ -1497,7 +1552,14 @@ export default function CheckoutClient({
         return false;
       }
     },
-    [cart.length, customers, focusScanInput, productMap, resetPayments, router],
+    [
+      cart.length,
+      customerRecords,
+      focusScanInput,
+      productMap,
+      resetPayments,
+      router,
+    ],
   );
 
   const resumeParkedSaleFromUrlEffect = useEffectEvent(
@@ -1675,7 +1737,7 @@ export default function CheckoutClient({
     setCustomerSearch(
       queuedSale.payload.customerId
         ? getCustomerDisplayName(
-            customers.find(
+            customerRecords.find(
               (customer) => customer.id === queuedSale.payload.customerId,
             ) ?? {},
           )
@@ -2180,7 +2242,7 @@ export default function CheckoutClient({
               <div className="text-xs leading-5 text-stone-500 sm:px-1">
                 {selectedCategory
                   ? `${filtered.length} matching product${filtered.length === 1 ? "" : "s"}`
-                  : `${categoryOptions.length - 1} categor${categoryOptions.length - 1 === 1 ? "y" : "ies"} available`}
+                  : `${categories.length} categor${categories.length === 1 ? "y" : "ies"} available`}
               </div>
             </div>
 
@@ -2213,10 +2275,6 @@ export default function CheckoutClient({
                 : isLowStock
                   ? "border-amber-200 bg-amber-50 text-amber-700"
                   : "border-emerald-200 bg-emerald-50 text-emerald-700";
-              const categoryPath = getCategoryPathLabel(
-                product.categoryId,
-                categories,
-              );
 
               return (
                 <button
@@ -2227,7 +2285,7 @@ export default function CheckoutClient({
                     setScanFeedback(null);
                     addToCart(product);
                   }}
-                  className={`group relative flex min-h-[250px] flex-col overflow-hidden rounded-[28px] border p-4 text-left shadow-[0_16px_38px_-28px_rgba(28,25,23,0.45)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:translate-y-0 active:scale-[0.995] ${
+                  className={`group relative flex min-h-62.5 flex-col overflow-hidden rounded-[28px] border p-4 text-left shadow-[0_16px_38px_-28px_rgba(28,25,23,0.45)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:translate-y-0 active:scale-[0.995] ${
                     isOutOfStock
                       ? "border-red-100 bg-[linear-gradient(160deg,rgba(255,255,255,0.98),rgba(254,242,242,0.82))] hover:border-red-200 hover:shadow-[0_20px_42px_-28px_rgba(185,28,28,0.28)]"
                       : "border-stone-200 bg-[linear-gradient(160deg,rgba(255,255,255,0.99),rgba(250,250,249,0.94))] hover:-translate-y-1 hover:border-emerald-300 hover:shadow-[0_24px_48px_-28px_rgba(5,150,105,0.32)]"
@@ -2258,13 +2316,9 @@ export default function CheckoutClient({
                       </div>
                       <div className="mt-1.5 line-clamp-2 text-sm leading-5 text-stone-500">
                         {product.variantLabel ??
-                          (product.categoryId ? categoryPath : "Standard item")}
+                          product.category?.name ??
+                          "Standard item"}
                       </div>
-                      {product.variantLabel && product.categoryId ? (
-                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-emerald-700/80">
-                          {categoryPath}
-                        </div>
-                      ) : null}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <span
                           className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${stockTone}`}
@@ -2498,27 +2552,133 @@ export default function CheckoutClient({
             ) : null}
 
             <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-4">
-              <div className="text-sm font-semibold text-stone-900">
-                Customer search
-              </div>
-              <div className="mt-3 grid gap-3">
-                <Input
-                  placeholder="Search customer by name, phone, email, or business"
-                  value={customerSearch}
-                  onChange={(event) => setCustomerSearch(event.target.value)}
-                />
-                <div className="flex flex-wrap gap-2">
-                  {filteredCustomers.map((customer) => (
-                    <button
-                      key={customer.id}
-                      type="button"
-                      onClick={() => selectCustomer(customer)}
-                      className={`rounded-full border px-3 py-2 text-sm transition ${selectedCustomerId === customer.id ? "border-emerald-600 bg-emerald-600 text-white" : "border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300 hover:bg-white"}`}
-                    >
-                      {getCustomerDisplayName(customer)}
-                    </button>
-                  ))}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-stone-900">
+                  Customer search
                 </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!isOnline}
+                  onClick={() => {
+                    setCustomerSearchOpen(false);
+                    setCustomerFeedback("");
+                    setQuickCustomerOpen(true);
+                  }}
+                >
+                  Quick create
+                </Button>
+              </div>
+
+              {!isOnline ? (
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  New customers can be registered when the terminal is back
+                  online.
+                </div>
+              ) : null}
+
+              {customerFeedback ? (
+                <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {customerFeedback}
+                </div>
+              ) : null}
+
+              <div className="relative mt-3">
+                <Input
+                  placeholder="Search by name, phone, email, or business"
+                  value={customerSearch}
+                  onFocus={() => {
+                    if (customerSearch.trim()) {
+                      setCustomerSearchOpen(true);
+                    }
+                  }}
+                  onBlur={() => setCustomerSearchOpen(false)}
+                  onChange={(event) => {
+                    const nextSearch = event.target.value;
+
+                    if (selectedCustomerId) {
+                      setSelectedCustomerId(null);
+                      setCustomerName("");
+                      setCustomerPhone("");
+                      setLoyaltyPointsToRedeem("0");
+                      setIsCreditSale(false);
+                    }
+
+                    setCustomerFeedback("");
+                    setCustomerSearch(nextSearch);
+                    setCustomerSearchOpen(Boolean(nextSearch.trim()));
+                  }}
+                />
+
+                {customerSearchOpen && customerSearch.trim() ? (
+                  <div className="absolute inset-x-0 top-[calc(100%+0.5rem)] z-40 overflow-hidden rounded-[22px] border border-stone-200 bg-white shadow-[0_22px_55px_-28px_rgba(28,25,23,0.45)]">
+                    {filteredCustomers.length ? (
+                      <>
+                        <div className="border-b border-stone-100 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">
+                          Matching customers
+                        </div>
+                        <div className="max-h-80 overflow-y-auto p-2">
+                          {filteredCustomers.map((customer) => (
+                            <button
+                              key={customer.id}
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => selectCustomer(customer)}
+                              className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                            >
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-sm font-black text-emerald-700">
+                                {getCustomerContactInitial(customer)}
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="truncate font-semibold text-stone-900">
+                                    {getCustomerDisplayName(customer)}
+                                  </div>
+                                  <span className="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+                                    {getCustomerTypeLabel(customer.type)}
+                                  </span>
+                                </div>
+                                <div className="mt-1 truncate text-xs text-stone-500">
+                                  {customer.phone || "No phone"}
+                                  {customer.email ? ` · ${customer.email}` : ""}
+                                </div>
+                              </div>
+
+                              <span className="shrink-0 text-xs font-semibold text-emerald-700">
+                                Attach
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="p-4">
+                        <div className="text-sm font-semibold text-stone-900">
+                          No matching customer
+                        </div>
+                        <div className="mt-1 text-xs leading-5 text-stone-500">
+                          Try another name, phone number, email, or business
+                          name.
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={!isOnline}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setCustomerSearchOpen(false);
+                            setCustomerFeedback("");
+                            setQuickCustomerOpen(true);
+                          }}
+                          className="mt-3"
+                        >
+                          Quick create customer
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               {selectedCustomer ? (
@@ -3004,6 +3164,16 @@ export default function CheckoutClient({
           </div>
         </Card>
       </div>
+
+      {quickCustomerOpen ? (
+        <QuickCustomerCreateModal
+          isOnline={isOnline}
+          existingCustomers={customerRecords}
+          onClose={() => setQuickCustomerOpen(false)}
+          onCreated={handleQuickCustomerCreated}
+          onUseExisting={handleQuickUseExisting}
+        />
+      ) : null}
     </div>
   );
 }

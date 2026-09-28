@@ -10,6 +10,7 @@ import { dateTime, money, shortDate } from "@/lib/format";
 import {
   bucketReceivableAmount,
   calculateCustomerLoyaltyBalance,
+  classifyCustomerContactMatch,
   createAgingBucketTotals,
   customerCreditStatusTone,
   customerTypeTone,
@@ -17,7 +18,11 @@ import {
   getCustomerDisplayName,
   getCustomerLoyaltyTypeLabel,
   getCustomerTypeLabel,
+  isValidCustomerEmailInput,
+  isValidCustomerPhoneInput,
   normalizeCustomerCreditStatus,
+  normalizeCustomerEmail,
+  normalizeCustomerPhone,
 } from "@/lib/customers";
 
 type CustomerSale = {
@@ -168,8 +173,8 @@ function payloadFromForm(form: CustomerForm) {
     businessName: form.businessName || null,
     contactPerson: form.contactPerson || null,
     taxId: form.taxId || null,
-    phone: form.phone || null,
-    email: form.email || null,
+    phone: normalizeCustomerPhone(form.phone),
+    email: normalizeCustomerEmail(form.email),
     address: form.address || null,
     notes: form.notes || null,
     isActive: form.isActive,
@@ -220,6 +225,40 @@ export default function CustomerDirectoryManager({
   const selectedCustomer = useMemo(
     () => records.find((customer) => customer.id === selectedId) ?? null,
     [records, selectedId],
+  );
+
+  const contactMatches = useMemo(() => {
+    const candidate = {
+      type: form.type,
+      firstName: form.firstName,
+      lastName: form.lastName,
+      businessName: form.businessName,
+      phone: form.phone,
+      email: form.email,
+    };
+
+    return records
+      .filter((customer) => customer.id !== selectedId)
+      .flatMap((customer) => {
+        const match = classifyCustomerContactMatch(customer, candidate);
+        return match ? [{ customer, ...match }] : [];
+      });
+  }, [
+    form.businessName,
+    form.email,
+    form.firstName,
+    form.lastName,
+    form.phone,
+    form.type,
+    records,
+    selectedId,
+  ]);
+
+  const likelyDuplicateMatches = contactMatches.filter(
+    (match) => match.kind === "LIKELY_DUPLICATE",
+  );
+  const sharedContactMatches = contactMatches.filter(
+    (match) => match.kind === "SHARED_CONTACT",
   );
 
   const filteredCustomers = useMemo(() => {
@@ -307,9 +346,37 @@ export default function CustomerDirectoryManager({
   }
 
   async function saveCustomer() {
-    setSaving(true);
     setError("");
     setSuccess("");
+
+    const normalizedPhone = normalizeCustomerPhone(form.phone);
+    const normalizedEmail = normalizeCustomerEmail(form.email);
+
+    if (!normalizedPhone && !normalizedEmail) {
+      setError("Enter at least a phone number or email address.");
+      return;
+    }
+
+    if (form.phone.trim() && !isValidCustomerPhoneInput(form.phone)) {
+      setError(
+        "Enter a valid phone number using 7 to 20 digits. Spaces, dashes, parentheses, and a leading + are allowed.",
+      );
+      return;
+    }
+
+    if (form.email.trim() && !isValidCustomerEmailInput(form.email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (likelyDuplicateMatches.length) {
+      setError(
+        "A likely duplicate customer already exists with this phone or email. Use the existing customer, or provide a different name/business name or contact detail to distinguish this as a separate customer.",
+      );
+      return;
+    }
+
+    setSaving(true);
 
     const response = await fetch(
       selectedCustomer
@@ -515,7 +582,7 @@ export default function CustomerDirectoryManager({
               </>
             )}
             <Input
-              placeholder="Phone"
+              placeholder="Phone (phone or email required)"
               value={form.phone}
               onChange={(event) =>
                 setForm((current) => ({
@@ -525,7 +592,7 @@ export default function CustomerDirectoryManager({
               }
             />
             <Input
-              placeholder="Email"
+              placeholder="Email (phone or email required)"
               value={form.email}
               onChange={(event) =>
                 setForm((current) => ({
@@ -545,6 +612,85 @@ export default function CustomerDirectoryManager({
               }
             />
           </div>
+
+          {likelyDuplicateMatches.length ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              <div className="font-semibold">Customer already exists</div>
+              <p className="mt-1 text-red-800">
+                A customer of the same type already uses this contact and the
+                new record does not have enough identifying information to
+                distinguish it. Use the existing customer, or change the
+                name/business name or contact details.
+              </p>
+              <div className="mt-3 space-y-2">
+                {likelyDuplicateMatches.slice(0, 4).map((match) => (
+                  <div
+                    key={match.customer.id}
+                    className="flex flex-col gap-2 rounded-xl border border-red-200/80 bg-white/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <div className="font-semibold text-stone-900">
+                        {getCustomerDisplayName(match.customer)}
+                      </div>
+                      <div className="text-xs text-stone-600">
+                        {getCustomerTypeLabel(match.customer.type)}
+                        {match.phoneMatch && match.emailMatch
+                          ? " · same phone and email"
+                          : match.phoneMatch
+                            ? " · same phone"
+                            : " · same email"}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => selectCustomerRecord(match.customer)}
+                    >
+                      Use existing
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : sharedContactMatches.length ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-semibold">Shared contact detected</div>
+              <p className="mt-1 text-amber-800">
+                This phone or email is already used by another customer, but the
+                customer type or identifying name is different. Shared contact
+                details are allowed when this is a separate customer.
+              </p>
+              <div className="mt-3 space-y-2">
+                {sharedContactMatches.slice(0, 4).map((match) => (
+                  <div
+                    key={match.customer.id}
+                    className="flex flex-col gap-2 rounded-xl border border-amber-200/80 bg-white/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <div className="font-semibold text-stone-900">
+                        {getCustomerDisplayName(match.customer)}
+                      </div>
+                      <div className="text-xs text-stone-600">
+                        {getCustomerTypeLabel(match.customer.type)}
+                        {match.phoneMatch && match.emailMatch
+                          ? " · same phone and email"
+                          : match.phoneMatch
+                            ? " · same phone"
+                            : " · same email"}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => selectCustomerRecord(match.customer)}
+                    >
+                      Use existing
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <textarea
             className="mt-3 min-h-24 w-full rounded-2xl border border-stone-200 bg-white/88 px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 hover:border-stone-300 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
@@ -570,7 +716,7 @@ export default function CustomerDirectoryManager({
             <Button
               type="button"
               onClick={() => void saveCustomer()}
-              disabled={saving}
+              disabled={saving || likelyDuplicateMatches.length > 0}
             >
               {saving
                 ? "Saving..."

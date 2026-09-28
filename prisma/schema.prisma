@@ -369,8 +369,11 @@ model Customer {
   createdAt     DateTime                @default(now())
   updatedAt     DateTime                @updatedAt
 
+  
   @@index([shopId, isActive, updatedAt])
   @@index([shopId, type, isActive])
+  @@index([shopId, phone])
+  @@index([shopId, email])
 }
 
 model Product {

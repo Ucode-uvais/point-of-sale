@@ -17,7 +17,13 @@ import {
   SUPPLIER_RETURN_DISPOSITION_OPTIONS,
   SUPPLIER_RETURN_REASON_OPTIONS,
 } from "@/lib/supplier-returns";
-import { CUSTOMER_TYPE_OPTIONS } from "@/lib/customers";
+import {
+  CUSTOMER_TYPE_OPTIONS,
+  isValidCustomerEmailInput,
+  isValidCustomerPhoneInput,
+  normalizeCustomerEmail,
+  normalizeCustomerPhone,
+} from "@/lib/customers";
 
 const shopRoleSchema = z.enum(["ADMIN", "MANAGER", "CASHIER"]);
 const permissionSchema = z.enum(PERMISSION_KEYS);
@@ -26,6 +32,41 @@ const shopTypeSchema = z.enum(
   SHOP_TYPE_OPTIONS.map((option) => option.value) as [string, ...string[]],
 );
 const paymentMethodSchema = z.enum(PAYMENT_METHODS);
+const customerPhoneSchema = z.preprocess(
+  (value) => {
+    if (value === null || value === undefined) return null;
+    const trimmed = String(value).trim();
+    return trimmed || null;
+  },
+  z
+    .string()
+    .trim()
+    .max(40, "Phone number is too long.")
+    .refine(
+      (value) => isValidCustomerPhoneInput(value),
+      "Enter a valid phone number using 7 to 20 digits. Spaces, dashes, parentheses, and a leading + are allowed.",
+    )
+    .transform((value) => normalizeCustomerPhone(value)!)
+    .nullable(),
+);
+
+const customerEmailSchema = z.preprocess(
+  (value) => {
+    if (value === null || value === undefined) return null;
+    const trimmed = String(value).trim();
+    return trimmed || null;
+  },
+  z
+    .string()
+    .trim()
+    .max(254, "Email address is too long.")
+    .refine(
+      (value) => isValidCustomerEmailInput(value),
+      "Enter a valid email address.",
+    )
+    .transform((value) => normalizeCustomerEmail(value)!)
+    .nullable(),
+);
 const imageUrlSchema = z
   .string()
   .trim()
@@ -160,7 +201,7 @@ export const categoryCreateSchema = z.object({
   parentId: optionalText(),
 });
 
-export const categoryUpdateSchema = categoryCreateSchema.partial().extend({
+export const categoryUpdateSchema = categoryCreateSchema.extend({
   isActive: z.coerce.boolean().optional(),
 });
 
@@ -254,29 +295,37 @@ export const customerSchema = z
     businessName: z.string().trim().max(160).optional().nullable(),
     contactPerson: z.string().trim().max(120).optional().nullable(),
     taxId: z.string().trim().max(80).optional().nullable(),
-    phone: z.string().trim().max(40).optional().nullable(),
-    email: z.string().trim().email().optional().nullable().or(z.literal("")),
+    phone: customerPhoneSchema,
+    email: customerEmailSchema,
     address: z.string().trim().max(255).optional().nullable(),
     notes: z.string().trim().max(500).optional().nullable(),
     isActive: z.coerce.boolean().optional().default(true),
   })
   .superRefine((input, ctx) => {
-    if (input.type === "BUSINESS") {
-      if (!input.businessName?.trim()) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["businessName"],
-          message: "Business customers need a business name.",
-        });
-      }
-      return;
-    }
-
-    if (!input.firstName?.trim() && !input.lastName?.trim()) {
+    if (!input.phone && !input.email) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["firstName"],
-        message: "Enter at least a first name or last name.",
+        path: ["phone"],
+        message: "Enter at least a phone number or email address.",
+      });
+    }
+  });
+
+export const checkoutCustomerCreateSchema = z
+  .object({
+    type: z.enum(CUSTOMER_TYPE_OPTIONS).default("INDIVIDUAL"),
+    firstName: z.string().trim().max(80).optional().nullable(),
+    businessName: z.string().trim().max(160).optional().nullable(),
+    phone: customerPhoneSchema,
+    email: customerEmailSchema,
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (!input.phone && !input.email) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["phone"],
+        message: "Enter at least a phone number or email address.",
       });
     }
   });
