@@ -1,6 +1,12 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { processWorkerBatch, queueOperationalJobsForShop, recoverStaleRunningJobs } from '@/lib/worker';
+//route.ts from app/api/cron/worker
+
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import {
+  processWorkerBatch,
+  queueOperationalJobsForShop,
+  recoverStaleRunningJobs,
+} from "@/lib/worker";
 
 function isAuthorized(request: Request) {
   const secret = process.env.WORKER_CRON_SECRET;
@@ -8,23 +14,23 @@ function isAuthorized(request: Request) {
     return false;
   }
 
-  const authHeader = request.headers.get('authorization');
+  const authHeader = request.headers.get("authorization");
   if (authHeader === `Bearer ${secret}`) {
     return true;
   }
 
-  const headerSecret = request.headers.get('x-worker-cron-secret');
+  const headerSecret = request.headers.get("x-worker-cron-secret");
   return headerSecret === secret;
 }
 
 export async function POST(request: Request) {
   try {
     if (!isAuthorized(request)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const shops = await prisma.shop.findMany({
-      select: { id: true }
+      select: { id: true },
     });
 
     let queued = 0;
@@ -42,15 +48,16 @@ export async function POST(request: Request) {
       recovered,
       processed,
       shops: shops.length,
-      at: new Date().toISOString()
+      at: new Date().toISOString(),
     });
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : 'Unknown cron worker error'
+        error:
+          error instanceof Error ? error.message : "Unknown cron worker error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

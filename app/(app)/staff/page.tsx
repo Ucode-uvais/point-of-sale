@@ -1,26 +1,27 @@
-import AppHeader from '@/components/layout/AppHeader';
-import StaffListManager from '@/components/staff/StaffListManager';
-import { requirePagePermission } from '@/lib/authz';
-import { prisma } from '@/lib/prisma';
-import { serializeStaffListItem } from '@/lib/serializers/staff';
-import { getManagedShops } from '@/lib/staff';
+//page.tsx from app/(app)/staff
+import AppHeader from "@/components/layout/AppHeader";
+import StaffListManager from "@/components/staff/StaffListManager";
+import { requirePagePermission } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import { serializeStaffListItem } from "@/lib/serializers/staff";
+import { getManagedShops } from "@/lib/staff";
 
 export default async function StaffPage() {
-  const { userId, shopId } = await requirePagePermission('MANAGE_STAFF');
+  const { userId, shopId } = await requirePagePermission("MANAGE_STAFF");
   const shops = await getManagedShops(userId);
   const shopIds = shops.map((entry) => entry.id);
 
   const items = await prisma.userShop.findMany({
     where: {
-      shopId: { in: shopIds }
+      shopId: { in: shopIds },
     },
     include: {
       shop: {
         select: {
           id: true,
           name: true,
-          slug: true
-        }
+          slug: true,
+        },
       },
       user: {
         select: {
@@ -28,21 +29,21 @@ export default async function StaffPage() {
           name: true,
           email: true,
           authAuditLogs: {
-            where: { action: 'LOGIN_SUCCESS' },
-            orderBy: { createdAt: 'desc' },
+            where: { action: "LOGIN_SUCCESS" },
+            orderBy: { createdAt: "desc" },
             take: 1,
             select: {
               id: true,
               action: true,
               createdAt: true,
               ipAddress: true,
-              userAgent: true
-            }
-          }
-        }
-      }
+              userAgent: true,
+            },
+          },
+        },
+      },
     },
-    orderBy: [{ isActive: 'desc' }, { assignedAt: 'desc' }]
+    orderBy: [{ isActive: "desc" }, { assignedAt: "desc" }],
   });
 
   return (

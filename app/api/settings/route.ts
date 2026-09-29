@@ -1,47 +1,49 @@
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { settingSchema } from '@/lib/auth/validation';
-import { requireRole } from '@/lib/authz';
-import { apiErrorResponse } from '@/lib/api';
-import { logActivity } from '@/lib/activity';
-import { normalizeText } from '@/lib/inventory';
-import { prisma } from '@/lib/prisma';
+//route.ts from app/api/settings
+
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { settingSchema } from "@/lib/auth/validation";
+import { requireRole } from "@/lib/authz";
+import { apiErrorResponse } from "@/lib/api";
+import { logActivity } from "@/lib/activity";
+import { normalizeText } from "@/lib/inventory";
+import { prisma } from "@/lib/prisma";
 import {
   sanitizeDefaultPaymentMethods,
-  sanitizeReorderSafetyStock
-} from '@/lib/shop-settings';
+  sanitizeReorderSafetyStock,
+} from "@/lib/shop-settings";
 
 const expandedSettingSchema = settingSchema.extend({
   batchTrackingEnabled: z.coerce.boolean().default(false),
   expiryTrackingEnabled: z.coerce.boolean().default(false),
   fefoEnabled: z.coerce.boolean().default(false),
-  expiryAlertDays: z.coerce.number().int().min(0).max(365).default(30)
+  expiryAlertDays: z.coerce.number().int().min(0).max(365).default(30),
 });
 
 export async function GET() {
   try {
-    const { shopId } = await requireRole('MANAGER');
+    const { shopId } = await requireRole("MANAGER");
     const [shop, settings] = await Promise.all([
       prisma.shop.findUnique({ where: { id: shopId } }),
-      prisma.shopSetting.findUnique({ where: { shopId } })
+      prisma.shopSetting.findUnique({ where: { shopId } }),
     ]);
 
     return NextResponse.json({ shop, settings });
   } catch (error) {
-    return apiErrorResponse(error, 'Unable to load settings.');
+    return apiErrorResponse(error, "Unable to load settings.");
   }
 }
 
 export async function PUT(request: Request) {
   try {
-    const { shopId, userId } = await requireRole('MANAGER');
+    const { shopId, userId } = await requireRole("MANAGER");
     const body = await request.json();
     const parsed = expandedSettingSchema.safeParse(body);
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? 'Invalid settings.' },
-        { status: 400 }
+        { error: parsed.error.issues[0]?.message ?? "Invalid settings." },
+        { status: 400 },
       );
     }
 
@@ -54,8 +56,8 @@ export async function PUT(request: Request) {
           phone: normalizeText(parsed.data.phone),
           email: normalizeText(parsed.data.email),
           address: normalizeText(parsed.data.address),
-          taxId: normalizeText(parsed.data.taxId)
-        }
+          taxId: normalizeText(parsed.data.taxId),
+        },
       });
 
       await tx.shopSetting.upsert({
@@ -66,7 +68,9 @@ export async function PUT(request: Request) {
           timezone: parsed.data.timezone.trim(),
           taxMode: parsed.data.taxMode,
           taxRate: parsed.data.taxRate,
-          defaultPaymentMethods: sanitizeDefaultPaymentMethods(parsed.data.defaultPaymentMethods),
+          defaultPaymentMethods: sanitizeDefaultPaymentMethods(
+            parsed.data.defaultPaymentMethods,
+          ),
           receiptHeader: normalizeText(parsed.data.receiptHeader),
           receiptFooter: normalizeText(parsed.data.receiptFooter),
           receiptWidth: parsed.data.receiptWidth,
@@ -78,7 +82,9 @@ export async function PUT(request: Request) {
           barcodeScannerNotes: normalizeText(parsed.data.barcodeScannerNotes),
           lowStockEnabled: parsed.data.lowStockEnabled,
           lowStockThreshold: parsed.data.lowStockThreshold,
-          reorderSafetyStock: sanitizeReorderSafetyStock(parsed.data.reorderSafetyStock),
+          reorderSafetyStock: sanitizeReorderSafetyStock(
+            parsed.data.reorderSafetyStock,
+          ),
           offlineStockStrict: parsed.data.offlineStockStrict,
           offlineStockMaxAgeMinutes: parsed.data.offlineStockMaxAgeMinutes,
           batchTrackingEnabled: parsed.data.batchTrackingEnabled,
@@ -89,7 +95,7 @@ export async function PUT(request: Request) {
           openingFloatAmount: parsed.data.openingFloatAmount,
           salePrefix: parsed.data.salePrefix.trim().toUpperCase(),
           receiptPrefix: parsed.data.receiptPrefix.trim().toUpperCase(),
-          purchasePrefix: parsed.data.purchasePrefix.trim().toUpperCase()
+          purchasePrefix: parsed.data.purchasePrefix.trim().toUpperCase(),
         },
         create: {
           shopId,
@@ -98,7 +104,9 @@ export async function PUT(request: Request) {
           timezone: parsed.data.timezone.trim(),
           taxMode: parsed.data.taxMode,
           taxRate: parsed.data.taxRate,
-          defaultPaymentMethods: sanitizeDefaultPaymentMethods(parsed.data.defaultPaymentMethods),
+          defaultPaymentMethods: sanitizeDefaultPaymentMethods(
+            parsed.data.defaultPaymentMethods,
+          ),
           receiptHeader: normalizeText(parsed.data.receiptHeader),
           receiptFooter: normalizeText(parsed.data.receiptFooter),
           receiptWidth: parsed.data.receiptWidth,
@@ -110,7 +118,9 @@ export async function PUT(request: Request) {
           barcodeScannerNotes: normalizeText(parsed.data.barcodeScannerNotes),
           lowStockEnabled: parsed.data.lowStockEnabled,
           lowStockThreshold: parsed.data.lowStockThreshold,
-          reorderSafetyStock: sanitizeReorderSafetyStock(parsed.data.reorderSafetyStock),
+          reorderSafetyStock: sanitizeReorderSafetyStock(
+            parsed.data.reorderSafetyStock,
+          ),
           offlineStockStrict: parsed.data.offlineStockStrict,
           offlineStockMaxAgeMinutes: parsed.data.offlineStockMaxAgeMinutes,
           batchTrackingEnabled: parsed.data.batchTrackingEnabled,
@@ -121,23 +131,23 @@ export async function PUT(request: Request) {
           openingFloatAmount: parsed.data.openingFloatAmount,
           salePrefix: parsed.data.salePrefix.trim().toUpperCase(),
           receiptPrefix: parsed.data.receiptPrefix.trim().toUpperCase(),
-          purchasePrefix: parsed.data.purchasePrefix.trim().toUpperCase()
-        }
+          purchasePrefix: parsed.data.purchasePrefix.trim().toUpperCase(),
+        },
       });
 
       await logActivity({
         tx,
         shopId,
         userId,
-        action: 'SETTINGS_UPDATED',
-        entityType: 'ShopSetting',
+        action: "SETTINGS_UPDATED",
+        entityType: "ShopSetting",
         entityId: shopId,
-        description: 'Updated shop settings.'
+        description: "Updated shop settings.",
       });
     });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return apiErrorResponse(error, 'Unable to save settings.');
+    return apiErrorResponse(error, "Unable to save settings.");
   }
 }

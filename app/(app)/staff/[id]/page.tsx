@@ -1,33 +1,37 @@
-import { notFound } from 'next/navigation';
-import AppHeader from '@/components/layout/AppHeader';
-import StaffDetailManager from '@/components/staff/StaffDetailManager';
-import { requirePagePermission } from '@/lib/authz';
-import { prisma } from '@/lib/prisma';
-import { serializeAuthAuditLog, serializeStaffListItem } from '@/lib/serializers/staff';
-import { getManagedShops } from '@/lib/staff';
+//page.tsx from app/(app)/staff/[id]
+import { notFound } from "next/navigation";
+import AppHeader from "@/components/layout/AppHeader";
+import StaffDetailManager from "@/components/staff/StaffDetailManager";
+import { requirePagePermission } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import {
+  serializeAuthAuditLog,
+  serializeStaffListItem,
+} from "@/lib/serializers/staff";
+import { getManagedShops } from "@/lib/staff";
 
 export default async function StaffDetailPage({
-  params
+  params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { userId } = await requirePagePermission('MANAGE_STAFF');
+  const { userId } = await requirePagePermission("MANAGE_STAFF");
   const shops = await getManagedShops(userId);
   const shopIds = shops.map((entry) => entry.id);
 
   const membership = await prisma.userShop.findFirst({
     where: {
       id,
-      shopId: { in: shopIds }
+      shopId: { in: shopIds },
     },
     include: {
       shop: {
         select: {
           id: true,
           name: true,
-          slug: true
-        }
+          slug: true,
+        },
       },
       user: {
         select: {
@@ -38,7 +42,7 @@ export default async function StaffDetailPage({
           forcePasswordReset: true,
           lockedUntil: true,
           authAuditLogs: {
-            orderBy: { createdAt: 'desc' },
+            orderBy: { createdAt: "desc" },
             take: 25,
             select: {
               id: true,
@@ -46,12 +50,12 @@ export default async function StaffDetailPage({
               email: true,
               ipAddress: true,
               userAgent: true,
-              createdAt: true
-            }
-          }
-        }
-      }
-    }
+              createdAt: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!membership) {
@@ -62,8 +66,10 @@ export default async function StaffDetailPage({
     ...membership,
     user: {
       ...membership.user,
-      authAuditLogs: membership.user.authAuditLogs.filter((log) => log.action === 'LOGIN_SUCCESS')
-    }
+      authAuditLogs: membership.user.authAuditLogs.filter(
+        (log) => log.action === "LOGIN_SUCCESS",
+      ),
+    },
   });
 
   return (
@@ -75,12 +81,15 @@ export default async function StaffDetailPage({
       <StaffDetailManager
         initialStaff={{
           ...serialized,
-          authActivity: membership.user.authAuditLogs.map(serializeAuthAuditLog),
+          authActivity: membership.user.authAuditLogs.map(
+            serializeAuthAuditLog,
+          ),
           hasPin: Boolean(membership.staffPinHash),
           pinSetAt: membership.pinSetAt?.toISOString() ?? null,
-          emailVerifiedAt: membership.user.emailVerifiedAt?.toISOString() ?? null,
+          emailVerifiedAt:
+            membership.user.emailVerifiedAt?.toISOString() ?? null,
           forcePasswordReset: membership.user.forcePasswordReset,
-          lockedUntil: membership.user.lockedUntil?.toISOString() ?? null
+          lockedUntil: membership.user.lockedUntil?.toISOString() ?? null,
         }}
         shops={shops}
       />

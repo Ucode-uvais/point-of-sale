@@ -1,81 +1,83 @@
-import AppHeader from '@/components/layout/AppHeader';
-import StockTransferManager from '@/components/transfers/StockTransferManager';
-import type { StockTransferView } from '@/components/transfers/StockTransferManager';
-import { requirePageRole } from '@/lib/authz';
-import { prisma } from '@/lib/prisma';
-import { stockTransferDetailInclude } from '@/lib/stock-transfer-operations';
-import { serializeStockTransfer } from '@/lib/stock-transfers';
+//page.tsx from app/(app)/transfers
+import AppHeader from "@/components/layout/AppHeader";
+import StockTransferManager from "@/components/transfers/StockTransferManager";
+import type { StockTransferView } from "@/components/transfers/StockTransferManager";
+import { requirePageRole } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import { stockTransferDetailInclude } from "@/lib/stock-transfer-operations";
+import { serializeStockTransfer } from "@/lib/stock-transfers";
 
 export default async function TransfersPage() {
-  const { shopId, userId } = await requirePageRole('MANAGER');
+  const { shopId, userId } = await requirePageRole("MANAGER");
 
-  const [shop, settings, memberships, sourceProducts, stockTransfers] = await Promise.all([
-    prisma.shop.findUniqueOrThrow({
-      where: { id: shopId },
-      select: {
-        id: true,
-        name: true
-      }
-    }),
-    prisma.shopSetting.findUnique({
-      where: { shopId },
-      select: {
-        currencySymbol: true
-      }
-    }),
-    prisma.userShop.findMany({
-      where: {
-        userId,
-        isActive: true
-      },
-      include: {
-        shop: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      },
-      orderBy: [{ assignedAt: 'asc' }]
-    }),
-    prisma.product.findMany({
-      where: {
-        shopId,
-        isActive: true
-      },
-      select: {
-        id: true,
-        name: true,
-        sku: true,
-        barcode: true,
-        stockQty: true
-      },
-      orderBy: { name: 'asc' }
-    }),
-    prisma.stockTransfer.findMany({
-      where: {
-        OR: [{ fromShopId: shopId }, { toShopId: shopId }]
-      },
-      include: stockTransferDetailInclude,
-      orderBy: [{ createdAt: 'desc' }]
-    })
-  ]);
+  const [shop, settings, memberships, sourceProducts, stockTransfers] =
+    await Promise.all([
+      prisma.shop.findUniqueOrThrow({
+        where: { id: shopId },
+        select: {
+          id: true,
+          name: true,
+        },
+      }),
+      prisma.shopSetting.findUnique({
+        where: { shopId },
+        select: {
+          currencySymbol: true,
+        },
+      }),
+      prisma.userShop.findMany({
+        where: {
+          userId,
+          isActive: true,
+        },
+        include: {
+          shop: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: [{ assignedAt: "asc" }],
+      }),
+      prisma.product.findMany({
+        where: {
+          shopId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          barcode: true,
+          stockQty: true,
+        },
+        orderBy: { name: "asc" },
+      }),
+      prisma.stockTransfer.findMany({
+        where: {
+          OR: [{ fromShopId: shopId }, { toShopId: shopId }],
+        },
+        include: stockTransferDetailInclude,
+        orderBy: [{ createdAt: "desc" }],
+      }),
+    ]);
 
   const otherShops = memberships
     .filter((membership) => membership.shop.id !== shopId)
     .map((membership) => ({
       id: membership.shop.id,
       name: membership.shop.name,
-      role: membership.role
+      role: membership.role,
     }));
 
   const destinationProducts = otherShops.length
     ? await prisma.product.findMany({
         where: {
           shopId: {
-            in: otherShops.map((entry) => entry.id)
+            in: otherShops.map((entry) => entry.id),
           },
-          isActive: true
+          isActive: true,
         },
         select: {
           id: true,
@@ -83,9 +85,9 @@ export default async function TransfersPage() {
           name: true,
           sku: true,
           barcode: true,
-          stockQty: true
+          stockQty: true,
         },
-        orderBy: [{ shopId: 'asc' }, { name: 'asc' }]
+        orderBy: [{ shopId: "asc" }, { name: "asc" }],
       })
     : [];
 
@@ -98,11 +100,15 @@ export default async function TransfersPage() {
       <StockTransferManager
         activeShopId={shop.id}
         activeShopName={shop.name}
-        currencySymbol={settings?.currencySymbol ?? 'PHP '}
+        currencySymbol={settings?.currencySymbol ?? "PHP "}
         otherShops={otherShops}
         sourceProducts={sourceProducts}
         destinationProducts={destinationProducts}
-        initialTransfers={stockTransfers.map((stockTransfer) => serializeStockTransfer(stockTransfer)) as unknown as StockTransferView[]}
+        initialTransfers={
+          stockTransfers.map((stockTransfer) =>
+            serializeStockTransfer(stockTransfer),
+          ) as unknown as StockTransferView[]
+        }
       />
     </div>
   );

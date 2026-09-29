@@ -1,10 +1,11 @@
-import AppHeader from '@/components/layout/AppHeader';
-import StaffCreateForm from '@/components/staff/StaffCreateForm';
-import { requirePagePermission } from '@/lib/authz';
-import { getManagedShops } from '@/lib/staff';
+//page.tsx from app/(app)/staff/new
+import AppHeader from "@/components/layout/AppHeader";
+import StaffCreateForm from "@/components/staff/StaffCreateForm";
+import { requirePagePermission } from "@/lib/authz";
+import { getManagedShops } from "@/lib/staff";
 
 export default async function NewStaffPage() {
-  const { userId, shopId } = await requirePagePermission('MANAGE_STAFF');
+  const { userId, shopId } = await requirePagePermission("MANAGE_STAFF");
   const shops = await getManagedShops(userId);
 
   return (
