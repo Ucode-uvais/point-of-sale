@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
+import UnsavedCustomerChangesDialog from "@/components/customers/UnsavedCustomerChangesDialog";
+import { Pencil } from "lucide-react";
 import { dateTime, money, shortDate } from "@/lib/format";
 import {
   bucketReceivableAmount,
@@ -118,6 +120,16 @@ type PaymentDraft = {
   paidAt: string;
 };
 
+type CustomerEditorMode = "NEW" | "VIEW" | "EDIT";
+
+type EditorSwitchTarget =
+  | { type: "NEW" }
+  | {
+      type: "CUSTOMER";
+      customerId: string;
+      mode: Exclude<CustomerEditorMode, "NEW">;
+    };
+
 function blankForm(): CustomerForm {
   return {
     type: "INDIVIDUAL",
@@ -207,25 +219,46 @@ export default function CustomerDirectoryManager({
   currencySymbol: string;
 }) {
   const [records, setRecords] = useState(customers);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    customers[0]?.id ?? null,
-  );
-  const [form, setForm] = useState<CustomerForm>(
-    customers[0] ? formFromCustomer(customers[0]) : blankForm(),
-  );
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editorMode, setEditorMode] = useState<CustomerEditorMode>("NEW");
+  const [form, setForm] = useState<CustomerForm>(blankForm());
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(
-    paymentDraftFromCustomer(customers[0] ?? null),
+    paymentDraftFromCustomer(null),
   );
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
   const [postingPayment, setPostingPayment] = useState(false);
+  const [pendingEditorSwitch, setPendingEditorSwitch] =
+    useState<EditorSwitchTarget | null>(null);
 
   const selectedCustomer = useMemo(
     () => records.find((customer) => customer.id === selectedId) ?? null,
     [records, selectedId],
   );
+
+  const isEditDirty = useMemo(() => {
+    if (editorMode !== "EDIT" || !selectedCustomer) {
+      return false;
+    }
+
+    return (
+      JSON.stringify(form) !==
+      JSON.stringify(formFromCustomer(selectedCustomer))
+    );
+  }, [editorMode, form, selectedCustomer]);
+
+  const isViewMode = editorMode === "VIEW";
+
+  const viewInputClassName = isViewMode
+    ? "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-500 shadow-none placeholder:text-stone-400 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500 disabled:opacity-100"
+    : "";
+
+  const viewSelectClassName = isViewMode
+    ? "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-500 opacity-100"
+    : "";
 
   const contactMatches = useMemo(() => {
     const candidate = {
@@ -281,15 +314,6 @@ export default function CustomerDirectoryManager({
     });
   }, [query, records]);
 
-  const topCustomers = useMemo(
-    () =>
-      [...records]
-        .map((customer) => ({ customer, stats: getCustomerStats(customer) }))
-        .sort((left, right) => right.stats.totalSpend - left.stats.totalSpend)
-        .slice(0, 5),
-    [records],
-  );
-
   const agingSummary = useMemo(() => {
     const totals = createAgingBucketTotals();
     records.forEach((customer) => {
@@ -319,20 +343,116 @@ export default function CustomerDirectoryManager({
     );
   }
 
-  function selectCustomerRecord(customer: CustomerRecord) {
+  function selectCustomerRecord(
+    customer: CustomerRecord,
+    options?: {
+      scrollToEditor?: boolean;
+      mode?: Exclude<CustomerEditorMode, "NEW">;
+    },
+  ) {
     setSelectedId(customer.id);
+    setEditorMode(options?.mode ?? "VIEW");
     setForm(formFromCustomer(customer));
     setPaymentDraft(paymentDraftFromCustomer(customer));
     setError("");
     setSuccess("");
+
+    if (options?.scrollToEditor) {
+      window.requestAnimationFrame(() => {
+        editorRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    }
   }
 
   function startNewCustomer() {
     setSelectedId(null);
+    setEditorMode("NEW");
     setForm(blankForm());
     setPaymentDraft(paymentDraftFromCustomer(null));
     setError("");
     setSuccess("");
+  }
+
+  function completeEditorSwitch(target: EditorSwitchTarget) {
+    if (target.type === "NEW") {
+      startNewCustomer();
+      return;
+    }
+
+    const customer = records.find((entry) => entry.id === target.customerId);
+
+    if (!customer) {
+      setError("That customer is no longer available.");
+      return;
+    }
+
+    selectCustomerRecord(customer, {
+      scrollToEditor: true,
+      mode: target.mode,
+    });
+  }
+
+  function requestEditorSwitch(target: EditorSwitchTarget) {
+    if (selectedCustomer && isEditDirty) {
+      setPendingEditorSwitch(target);
+      return;
+    }
+
+    completeEditorSwitch(target);
+  }
+
+  function requestEditCustomer(customer: CustomerRecord) {
+    if (selectedCustomer?.id === customer.id) {
+      if (editorMode !== "EDIT") {
+        setEditorMode("EDIT");
+        setForm(formFromCustomer(customer));
+        setError("");
+        setSuccess("");
+      }
+
+      window.requestAnimationFrame(() => {
+        editorRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+      return;
+    }
+
+    requestEditorSwitch({
+      type: "CUSTOMER",
+      customerId: customer.id,
+      mode: "EDIT",
+    });
+  }
+
+  function requestViewCustomer(customer: CustomerRecord) {
+    if (selectedCustomer?.id === customer.id) {
+      if (editorMode === "EDIT" && isEditDirty) {
+        window.requestAnimationFrame(() => {
+          editorRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
+        return;
+      }
+
+      selectCustomerRecord(customer, {
+        scrollToEditor: true,
+        mode: "VIEW",
+      });
+      return;
+    }
+
+    requestEditorSwitch({
+      type: "CUSTOMER",
+      customerId: customer.id,
+      mode: "VIEW",
+    });
   }
 
   function changeCustomerType(type: CustomerForm["type"]) {
@@ -345,7 +465,13 @@ export default function CustomerDirectoryManager({
     }));
   }
 
-  async function saveCustomer() {
+  async function saveCustomer(options?: {
+    afterSaveTarget?: EditorSwitchTarget | null;
+  }) {
+    if (editorMode === "VIEW") {
+      return;
+    }
+
     setError("");
     setSuccess("");
 
@@ -403,12 +529,20 @@ export default function CustomerDirectoryManager({
       replaceCustomer(data.customer);
       setForm(formFromCustomer(data.customer));
       setPaymentDraft(paymentDraftFromCustomer(data.customer));
+
+      if (options?.afterSaveTarget) {
+        completeEditorSwitch(options.afterSaveTarget);
+        return;
+      }
+
+      setEditorMode("VIEW");
       setSuccess("Customer updated.");
       return;
     }
 
     setRecords((current) => [data.customer, ...current]);
     setSelectedId(data.customer.id);
+    setEditorMode("VIEW");
     setForm(formFromCustomer(data.customer));
     setPaymentDraft(paymentDraftFromCustomer(data.customer));
     setSuccess("Customer created.");
@@ -480,30 +614,61 @@ export default function CustomerDirectoryManager({
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <div ref={editorRef} className="scroll-mt-24">
         <Card>
-          <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
                 Customer directory
               </div>
               <h2 className="mt-2 text-xl font-black text-stone-900">
-                {selectedCustomer ? "Edit customer" : "New customer"}
+                {editorMode === "NEW"
+                  ? "New customer"
+                  : editorMode === "VIEW"
+                    ? "View customer"
+                    : "Edit customer"}
               </h2>
+              <p className="mt-1 text-sm text-stone-500">
+                {editorMode === "NEW"
+                  ? "Create a customer profile. A phone number or email address is required."
+                  : editorMode === "VIEW"
+                    ? "Review customer details. Fields are locked until you enter edit mode."
+                    : "Update customer details, contact information, and account status."}
+              </p>
+              {isViewMode ? (
+                <div className="mt-2 inline-flex items-center rounded-full border border-stone-200 bg-stone-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+                  Read only
+                </div>
+              ) : null}
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={startNewCustomer}
-            >
-              New
-            </Button>
+
+            {editorMode === "VIEW" && selectedCustomer ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => requestEditCustomer(selectedCustomer)}
+              >
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+                Edit customer
+              </Button>
+            ) : editorMode === "EDIT" && selectedCustomer ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => requestEditorSwitch({ type: "NEW" })}
+              >
+                New customer
+              </Button>
+            ) : null}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <select
-              className="rounded-xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-sm"
+              className={`rounded-xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-sm transition ${
+                viewSelectClassName
+              }`}
               value={form.type}
+              disabled={isViewMode}
               onChange={(event) =>
                 changeCustomerType(event.target.value as CustomerForm["type"])
               }
@@ -511,9 +676,13 @@ export default function CustomerDirectoryManager({
               <option value="INDIVIDUAL">Individual</option>
               <option value="BUSINESS">Business</option>
             </select>
+
             <select
-              className="rounded-xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-sm"
+              className={`rounded-xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-sm transition ${
+                viewSelectClassName
+              }`}
               value={form.isActive ? "active" : "archived"}
+              disabled={isViewMode}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
@@ -524,11 +693,14 @@ export default function CustomerDirectoryManager({
               <option value="active">Active</option>
               <option value="archived">Archived</option>
             </select>
+
             {form.type === "INDIVIDUAL" ? (
               <>
                 <Input
                   placeholder="First name"
                   value={form.firstName}
+                  className={viewInputClassName}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -539,6 +711,8 @@ export default function CustomerDirectoryManager({
                 <Input
                   placeholder="Last name"
                   value={form.lastName}
+                  className={viewInputClassName}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -552,6 +726,8 @@ export default function CustomerDirectoryManager({
                 <Input
                   placeholder="Business / Entity Name"
                   value={form.businessName}
+                  className={viewInputClassName}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -562,6 +738,8 @@ export default function CustomerDirectoryManager({
                 <Input
                   placeholder="Contact person"
                   value={form.contactPerson}
+                  className={viewInputClassName}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -572,6 +750,8 @@ export default function CustomerDirectoryManager({
                 <Input
                   placeholder="Tax ID / Company Reference"
                   value={form.taxId}
+                  className={viewInputClassName}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -581,9 +761,12 @@ export default function CustomerDirectoryManager({
                 />
               </>
             )}
+
             <Input
               placeholder="Phone (phone or email required)"
               value={form.phone}
+              className={viewInputClassName}
+              disabled={isViewMode}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
@@ -594,6 +777,8 @@ export default function CustomerDirectoryManager({
             <Input
               placeholder="Email (phone or email required)"
               value={form.email}
+              className={viewInputClassName}
+              disabled={isViewMode}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
@@ -604,6 +789,8 @@ export default function CustomerDirectoryManager({
             <Input
               placeholder="Address / Location"
               value={form.address}
+              className={viewInputClassName}
+              disabled={isViewMode}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
@@ -613,7 +800,7 @@ export default function CustomerDirectoryManager({
             />
           </div>
 
-          {likelyDuplicateMatches.length ? (
+          {!isViewMode && likelyDuplicateMatches.length ? (
             <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
               <div className="font-semibold">Customer already exists</div>
               <p className="mt-1 text-red-800">
@@ -622,7 +809,7 @@ export default function CustomerDirectoryManager({
                 distinguish it. Use the existing customer, or change the
                 name/business name or contact details.
               </p>
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 grid gap-2 lg:grid-cols-2">
                 {likelyDuplicateMatches.slice(0, 4).map((match) => (
                   <div
                     key={match.customer.id}
@@ -644,7 +831,9 @@ export default function CustomerDirectoryManager({
                     <Button
                       type="button"
                       variant="ghost"
-                      onClick={() => selectCustomerRecord(match.customer)}
+                      onClick={() =>
+                        selectCustomerRecord(match.customer, { mode: "VIEW" })
+                      }
                     >
                       Use existing
                     </Button>
@@ -652,7 +841,7 @@ export default function CustomerDirectoryManager({
                 ))}
               </div>
             </div>
-          ) : sharedContactMatches.length ? (
+          ) : !isViewMode && sharedContactMatches.length ? (
             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <div className="font-semibold">Shared contact detected</div>
               <p className="mt-1 text-amber-800">
@@ -660,7 +849,7 @@ export default function CustomerDirectoryManager({
                 customer type or identifying name is different. Shared contact
                 details are allowed when this is a separate customer.
               </p>
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 grid gap-2 lg:grid-cols-2">
                 {sharedContactMatches.slice(0, 4).map((match) => (
                   <div
                     key={match.customer.id}
@@ -682,7 +871,9 @@ export default function CustomerDirectoryManager({
                     <Button
                       type="button"
                       variant="ghost"
-                      onClick={() => selectCustomerRecord(match.customer)}
+                      onClick={() =>
+                        selectCustomerRecord(match.customer, { mode: "VIEW" })
+                      }
                     >
                       Use existing
                     </Button>
@@ -693,9 +884,14 @@ export default function CustomerDirectoryManager({
           ) : null}
 
           <textarea
-            className="mt-3 min-h-24 w-full rounded-2xl border border-stone-200 bg-white/88 px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 hover:border-stone-300 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
+            className={`mt-3 min-h-24 w-full rounded-2xl border px-4 py-3 text-sm outline-none transition placeholder:text-stone-400 ${
+              isViewMode
+                ? "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-500 opacity-100"
+                : "border-stone-200 bg-white/88 text-stone-900 hover:border-stone-300 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
+            }`}
             placeholder="Notes"
             value={form.notes}
+            disabled={isViewMode}
             onChange={(event) =>
               setForm((current) => ({ ...current, notes: event.target.value }))
             }
@@ -712,141 +908,282 @@ export default function CustomerDirectoryManager({
             </div>
           ) : null}
 
-          <div className="mt-4 flex gap-2">
-            <Button
-              type="button"
-              onClick={() => void saveCustomer()}
-              disabled={saving || likelyDuplicateMatches.length > 0}
-            >
-              {saving
-                ? "Saving..."
-                : selectedCustomer
-                  ? "Update customer"
-                  : "Create customer"}
-            </Button>
-            {selectedCustomer ? (
-              <Button type="button" variant="ghost" onClick={startNewCustomer}>
-                Cancel
+          {editorMode !== "VIEW" ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => void saveCustomer()}
+                disabled={saving || likelyDuplicateMatches.length > 0}
+              >
+                {saving
+                  ? "Saving..."
+                  : editorMode === "EDIT"
+                    ? "Update customer"
+                    : "Create customer"}
               </Button>
-            ) : null}
-          </div>
-        </Card>
-
-        <Card>
-          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                Growth view
-              </div>
-              <h2 className="mt-2 text-xl font-black text-stone-900">
-                Customers
-              </h2>
             </div>
+          ) : null}
+        </Card>
+      </div>
+
+      <Card>
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+              Customer records
+            </div>
+            <h2 className="mt-2 text-xl font-black text-stone-900">
+              All customers
+            </h2>
+            <p className="mt-1 text-sm text-stone-500">
+              {filteredCustomers.length} of {records.length} customer
+              {records.length === 1 ? "" : "s"} shown
+            </p>
+          </div>
+          <div className="w-full lg:max-w-md">
             <Input
               placeholder="Search by name, phone, email, business..."
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
+        </div>
 
-          <div className="mb-4 grid gap-3 md:grid-cols-5">
-            {topCustomers.map(({ customer, stats }) => (
-              <button
-                key={customer.id}
-                type="button"
-                onClick={() => selectCustomerRecord(customer)}
-                className="rounded-2xl border border-stone-200 bg-stone-50 p-4 text-left transition hover:border-emerald-300"
-              >
-                <div className="truncate font-semibold text-stone-900">
-                  {getCustomerDisplayName(customer)}
-                </div>
-                <div className="mt-1 text-xs text-stone-500">
-                  {stats.purchaseCount} sale(s)
-                </div>
-                <div className="mt-2 text-xl font-black text-emerald-700">
-                  {money(stats.totalSpend, currencySymbol)}
-                </div>
-              </button>
-            ))}
-          </div>
+        <div className="hidden overflow-x-auto rounded-2xl border border-stone-200 lg:block">
+          <table className="w-full min-w-245 border-collapse text-sm">
+            <thead className="bg-stone-50 text-left">
+              <tr className="border-b border-stone-200">
+                <th className="px-4 py-3 font-semibold text-stone-600">
+                  Customer
+                </th>
+                <th className="px-4 py-3 font-semibold text-stone-600">
+                  Contact
+                </th>
+                <th className="px-4 py-3 text-right font-semibold text-stone-600">
+                  Sales
+                </th>
+                <th className="px-4 py-3 text-right font-semibold text-stone-600">
+                  Spend
+                </th>
+                <th className="px-4 py-3 text-right font-semibold text-stone-600">
+                  Points
+                </th>
+                <th className="px-4 py-3 text-right font-semibold text-stone-600">
+                  Receivables
+                </th>
+                <th className="px-4 py-3 font-semibold text-stone-600">
+                  Last purchase
+                </th>
+                <th className="px-4 py-3 font-semibold text-stone-600">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-right font-semibold text-stone-600">
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCustomers.map((customer) => {
+                const stats = getCustomerStats(customer);
+                const isSelected = selectedId === customer.id;
 
-          <div className="space-y-3">
-            {filteredCustomers.map((customer) => {
-              const stats = getCustomerStats(customer);
-              return (
-                <button
-                  key={customer.id}
-                  type="button"
-                  onClick={() => selectCustomerRecord(customer)}
-                  className={`w-full rounded-2xl border p-4 text-left transition ${selectedId === customer.id ? "border-emerald-300 bg-emerald-50/60" : "border-stone-200 bg-white hover:border-stone-300"}`}
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
+                return (
+                  <tr
+                    key={customer.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View ${getCustomerDisplayName(customer)}`}
+                    onClick={() => requestViewCustomer(customer)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        requestViewCustomer(customer);
+                      }
+                    }}
+                    className={`cursor-pointer border-b border-stone-100 transition last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 ${
+                      isSelected
+                        ? "bg-emerald-50/70"
+                        : "bg-white hover:bg-stone-50"
+                    }`}
+                  >
+                    <td className="px-4 py-3 align-top">
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-semibold text-stone-900">
+                        <span className="font-semibold text-stone-900">
                           {getCustomerDisplayName(customer)}
-                        </div>
+                        </span>
                         <Badge tone={customerTypeTone(customer.type)}>
                           {getCustomerTypeLabel(customer.type)}
                         </Badge>
-                        {!customer.isActive ? (
-                          <Badge tone="red">Archived</Badge>
-                        ) : null}
                       </div>
-                      <div className="mt-1 text-sm text-stone-500">
-                        {customer.phone || "No phone"}
-                        {customer.email ? ` / ${customer.email}` : ""}
-                      </div>
+                      {customer.type === "BUSINESS" &&
+                      customer.contactPerson ? (
+                        <div className="mt-1 text-xs text-stone-500">
+                          Contact: {customer.contactPerson}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 align-top text-stone-600">
+                      <div>{customer.phone || "No phone"}</div>
+                      {customer.email ? (
+                        <div className="mt-1 max-w-60 truncate text-xs text-stone-500">
+                          {customer.email}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-right align-top font-semibold text-stone-800">
+                      {stats.purchaseCount}
+                    </td>
+                    <td className="px-4 py-3 text-right align-top font-semibold text-stone-900">
+                      {money(stats.totalSpend, currencySymbol)}
+                    </td>
+                    <td className="px-4 py-3 text-right align-top font-semibold text-stone-800">
+                      {stats.loyaltyBalance}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right align-top font-semibold ${
+                        stats.receivableBalance > 0
+                          ? "text-amber-700"
+                          : "text-stone-800"
+                      }`}
+                    >
+                      {money(stats.receivableBalance, currencySymbol)}
+                    </td>
+                    <td className="px-4 py-3 align-top text-stone-600">
+                      {stats.lastPurchaseAt
+                        ? shortDate(stats.lastPurchaseAt)
+                        : "No sales yet"}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      {customer.isActive ? (
+                        <Badge tone="emerald">Active</Badge>
+                      ) : (
+                        <Badge tone="red">Archived</Badge>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right align-top">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          requestEditCustomer(customer);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
+                        Edit
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="space-y-3 lg:hidden">
+          {filteredCustomers.map((customer) => {
+            const stats = getCustomerStats(customer);
+            const isSelected = selectedId === customer.id;
+
+            return (
+              <div
+                key={customer.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`View ${getCustomerDisplayName(customer)}`}
+                onClick={() => requestViewCustomer(customer)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    requestViewCustomer(customer);
+                  }
+                }}
+                className={`w-full cursor-pointer rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                  isSelected
+                    ? "border-emerald-300 bg-emerald-50/70"
+                    : "border-stone-200 bg-white hover:border-stone-300"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate font-semibold text-stone-900">
+                        {getCustomerDisplayName(customer)}
+                      </span>
+                      <Badge tone={customerTypeTone(customer.type)}>
+                        {getCustomerTypeLabel(customer.type)}
+                      </Badge>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm lg:min-w-[280px]">
-                      <div>
-                        <div className="text-xs uppercase tracking-[0.14em] text-stone-400">
-                          Spend
-                        </div>
-                        <div className="font-semibold text-stone-900">
-                          {money(stats.totalSpend, currencySymbol)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs uppercase tracking-[0.14em] text-stone-400">
-                          Points
-                        </div>
-                        <div className="font-semibold text-stone-900">
-                          {stats.loyaltyBalance}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs uppercase tracking-[0.14em] text-stone-400">
-                          Last purchase
-                        </div>
-                        <div className="font-semibold text-stone-900">
-                          {stats.lastPurchaseAt
-                            ? shortDate(stats.lastPurchaseAt)
-                            : "No sales yet"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs uppercase tracking-[0.14em] text-stone-400">
-                          Receivables
-                        </div>
-                        <div className="font-semibold text-stone-900">
-                          {money(stats.receivableBalance, currencySymbol)}
-                        </div>
-                      </div>
+                    <div className="mt-1 text-sm text-stone-500">
+                      {customer.phone || "No phone"}
+                      {customer.email ? ` · ${customer.email}` : ""}
                     </div>
                   </div>
-                </button>
-              );
-            })}
+                  {customer.isActive ? (
+                    <Badge tone="emerald">Active</Badge>
+                  ) : (
+                    <Badge tone="red">Archived</Badge>
+                  )}
+                </div>
 
-            {!filteredCustomers.length ? (
-              <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-sm text-stone-500">
-                No customers matched that search.
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-stone-400">
+                      Spend
+                    </div>
+                    <div className="mt-1 font-semibold text-stone-900">
+                      {money(stats.totalSpend, currencySymbol)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-stone-400">
+                      Receivables
+                    </div>
+                    <div className="mt-1 font-semibold text-stone-900">
+                      {money(stats.receivableBalance, currencySymbol)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-stone-400">
+                      Points
+                    </div>
+                    <div className="mt-1 font-semibold text-stone-900">
+                      {stats.loyaltyBalance}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-stone-400">
+                      Last purchase
+                    </div>
+                    <div className="mt-1 font-semibold text-stone-900">
+                      {stats.lastPurchaseAt
+                        ? shortDate(stats.lastPurchaseAt)
+                        : "No sales yet"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => requestEditCustomer(customer)}
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden="true" />
+                    Edit
+                  </Button>
+                </div>
               </div>
-            ) : null}
+            );
+          })}
+        </div>
+
+        {!filteredCustomers.length ? (
+          <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
+            No customers matched that search.
           </div>
-        </Card>
-      </div>
+        ) : null}
+      </Card>
 
       {selectedCustomer ? (
         <Card>
@@ -1127,6 +1464,30 @@ export default function CustomerDirectoryManager({
           </div>
         </Card>
       ) : null}
+
+      <UnsavedCustomerChangesDialog
+        open={Boolean(pendingEditorSwitch)}
+        pending={saving}
+        onKeepEditing={() => setPendingEditorSwitch(null)}
+        onDiscardChanges={() => {
+          const target = pendingEditorSwitch;
+          if (!target) {
+            return;
+          }
+
+          setPendingEditorSwitch(null);
+          completeEditorSwitch(target);
+        }}
+        onSaveAndContinue={() => {
+          const target = pendingEditorSwitch;
+          if (!target) {
+            return;
+          }
+
+          setPendingEditorSwitch(null);
+          void saveCustomer({ afterSaveTarget: target });
+        }}
+      />
     </div>
   );
 }
