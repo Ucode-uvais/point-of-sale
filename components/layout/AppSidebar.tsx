@@ -364,7 +364,7 @@ const ShopHeader = ({
       <div className="flex flex-col items-center gap-4 py-2">
         <button
           onClick={() => setOpen(true)}
-          className="hidden md:inline-flex h-10 w-10 items-center justify-center rounded-xl text-stone-500 hover:bg-stone-100 hover:text-stone-900 transition-colors focus:outline-none"
+          className="hidden md:inline-flex h-10 w-10 items-center justify-center rounded-xl text-stone-500 hover:bg-stone-100 hover:text-stone-900 transition-colors focus:outline-none cursor-pointer"
           aria-label="Open sidebar"
         >
           <PanelLeftOpen className="h-5 w-5 text-black" />
@@ -403,7 +403,7 @@ const ShopHeader = ({
         </div>
         <button
           onClick={() => setOpen(false)}
-          className="hidden md:inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-900 transition-colors focus:outline-none"
+          className="hidden md:inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-900 transition-colors focus:outline-none cursor-pointer"
           aria-label="Close sidebar"
         >
           <PanelLeftClose className="h-5 w-5 text-black" />
@@ -693,7 +693,7 @@ function SidebarContent({
       <div className="border-t border-stone-200/60 pt-4 pb-2">
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="group flex w-full items-center justify-start gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-red-100 hover:text-red-500 relative"
+          className="group flex w-full items-center justify-start gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold text-stone-600 transition-colors hover:bg-red-100 hover:text-red-500 relative cursor-pointer"
         >
           <LogOut className="h-4.5 w-4.5 shrink-0 text-stone-500 transition-colors group-hover:text-red-500" />
           <motion.span

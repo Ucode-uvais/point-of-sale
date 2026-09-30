@@ -270,7 +270,7 @@ export default function InventoryMovementTable() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[24px] border border-stone-200 bg-stone-50/70 p-4">
+      <div className="rounded-3xl border border-stone-200 bg-stone-50/70 p-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.5fr)_minmax(180px,0.8fr)_minmax(180px,0.8fr)_130px]">
           <Input
             value={queryInput}
@@ -379,7 +379,7 @@ export default function InventoryMovementTable() {
         </div>
       ) : null}
 
-      <div className="hidden overflow-hidden rounded-[24px] border border-stone-200 md:block">
+      <div className="hidden overflow-hidden rounded-3xl border border-stone-200 md:block">
         <div className="overflow-x-auto">
           <table className="min-w-[1040px] w-full table-fixed text-left text-sm">
             <thead className="bg-stone-50 text-stone-500">

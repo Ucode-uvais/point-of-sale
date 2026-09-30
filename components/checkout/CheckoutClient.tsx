@@ -13,6 +13,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { createPortal } from "react-dom";
 import ThermalReceipt from "@/components/receipts/ThermalReceipt";
 import QuickCustomerCreateModal, {
   type QuickCreatedCustomer,
@@ -20,6 +21,7 @@ import QuickCustomerCreateModal, {
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
+import { Popover } from "rizzui/popover";
 import { Select } from "rizzui/select";
 import { getCustomerDisplayName, getCustomerTypeLabel } from "@/lib/customers";
 import { dateTime, money } from "@/lib/format";
@@ -85,6 +87,14 @@ type Customer = {
   lastPurchaseAt: string | null;
 };
 type ScanFeedback = { tone: "success" | "error"; message: string } | null;
+type SaleApiConflict = {
+  type?: string;
+  productId?: string;
+  productName?: string;
+  message?: string;
+  requestedQty?: number;
+  availableQty?: number;
+};
 type PaymentLine = {
   id: string;
   method: PaymentMethod;
@@ -505,6 +515,7 @@ export default function CheckoutClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const scanInputRef = useRef<HTMLInputElement>(null);
+  const offlineReceiptPreviewRef = useRef<HTMLDivElement>(null);
   const cartRef = useRef<CartItem[]>([]);
   const queuedSalesRef = useRef<OfflineQueuedSale[]>([]);
   const syncInFlightRef = useRef(false);
@@ -533,6 +544,10 @@ export default function CheckoutClient({
   const [query, setQuery] = useState("");
   const [scanQuery, setScanQuery] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>(
+    {},
+  );
+  const [stockLimitAlert, setStockLimitAlert] = useState("");
   const [discountAmount, setDiscountAmount] = useState("0");
   const [customerSearch, setCustomerSearch] = useState("");
   const [locallyCreatedCustomers, setLocallyCreatedCustomers] = useState<
@@ -549,12 +564,16 @@ export default function CheckoutClient({
   const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState("0");
   const [isCreditSale, setIsCreditSale] = useState(false);
   const [creditDueDate, setCreditDueDate] = useState("");
+  const [showCreditDueDateHint, setShowCreditDueDateHint] = useState(false);
   const [notes, setNotes] = useState("");
   const [payments, setPayments] = useState<PaymentLine[]>([]);
   const [parkedSales, setParkedSales] =
     useState<ParkedSale[]>(initialParkedSales);
   const [queuedSales, setQueuedSales] = useState<OfflineQueuedSale[]>([]);
   const [activeReceiptId, setActiveReceiptId] = useState<string | null>(null);
+  const [pendingPrintReceiptId, setPendingPrintReceiptId] = useState<
+    string | null
+  >(null);
   const [lastSyncedSale, setLastSyncedSale] = useState<{
     id: string;
     saleNumber: string;
@@ -656,6 +675,30 @@ export default function CheckoutClient({
     () => new Map(products.map((product) => [product.id, product])),
     [products],
   );
+  const hasPendingQuantityEdits = Object.keys(quantityDrafts).length > 0;
+  const cartStockError = useMemo(() => {
+    const totalsByProduct = new Map<
+      string,
+      { name: string; requestedQty: number; stockQty: number }
+    >();
+
+    for (const item of cart) {
+      const current = totalsByProduct.get(item.productId);
+      totalsByProduct.set(item.productId, {
+        name: item.name,
+        requestedQty: (current?.requestedQty ?? 0) + item.qty,
+        stockQty: item.stockQty,
+      });
+    }
+
+    for (const item of totalsByProduct.values()) {
+      if (item.requestedQty > item.stockQty) {
+        return `Cannot proceed with ${item.name}. Requested quantity is ${item.requestedQty}, but only ${item.stockQty} unit(s) are in stock.`;
+      }
+    }
+
+    return "";
+  }, [cart]);
   const itemCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const subtotal = cart.reduce(
     (sum, item) => sum + Number(item.price) * item.qty,
@@ -766,7 +809,24 @@ export default function CheckoutClient({
     discount >= 0 &&
     discount <= subtotal + taxAmount &&
     !paymentError &&
+    !cartStockError &&
+    !hasPendingQuantityEdits &&
     !offlineCheckoutBlocked;
+
+  useEffect(() => {
+    if (!stockLimitAlert) return;
+    const timeoutId = window.setTimeout(() => setStockLimitAlert(""), 3_500);
+    return () => window.clearTimeout(timeoutId);
+  }, [stockLimitAlert]);
+
+  useEffect(() => {
+    if (!showCreditDueDateHint) return;
+    const timeoutId = window.setTimeout(
+      () => setShowCreditDueDateHint(false),
+      2_500,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [showCreditDueDateHint]);
 
   const pendingQueuedSales = queuedSales.filter(
     (sale) => sale.status === "PENDING",
@@ -783,6 +843,33 @@ export default function CheckoutClient({
       : (queuedSales[0]?.id ?? null);
   const activeReceiptSale =
     queuedSales.find((sale) => sale.id === resolvedActiveReceiptId) ?? null;
+
+  function scrollToOfflineReceiptPreview() {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        offlineReceiptPreviewRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    });
+  }
+
+  function viewQueuedReceipt(queuedSale: OfflineQueuedSale) {
+    setActiveReceiptId(queuedSale.id);
+    scrollToOfflineReceiptPreview();
+  }
+
+  function printQueuedReceipt(queuedSale: OfflineQueuedSale) {
+    // ThermalReceipt owns the print-page sizing and isolation logic. Toggle the
+    // request through null so printing the same queued receipt twice still
+    // produces a fresh false -> true autoprint transition.
+    setActiveReceiptId(queuedSale.id);
+    setPendingPrintReceiptId(null);
+    window.requestAnimationFrame(() => {
+      setPendingPrintReceiptId(queuedSale.id);
+    });
+  }
 
   useEffect(() => {
     cartRef.current = cart;
@@ -834,6 +921,8 @@ export default function CheckoutClient({
   }, [canAcceptCash, defaultPaymentMethods]);
   const clearCartState = () => {
     setCart([]);
+    setQuantityDrafts({});
+    setStockLimitAlert("");
     setSelectedCustomerId(null);
     setCustomerSearch("");
     setCustomerName("");
@@ -851,6 +940,8 @@ export default function CheckoutClient({
 
   function resetCheckoutState() {
     setCart([]);
+    setQuantityDrafts({});
+    setStockLimitAlert("");
     setDiscountAmount("0");
     setCustomerSearch("");
     setSelectedCustomerId(null);
@@ -914,6 +1005,71 @@ export default function CheckoutClient({
     setCustomerFeedback("Existing customer attached to this sale.");
   }
 
+  function showStockLimitError(message: string) {
+    // Stock-limit feedback is intentionally shown as a viewport-level toast.
+    // Keep it out of the inline checkout error area so cashiers do not need to
+    // scroll to find the warning after editing a cart quantity.
+    setError("");
+    setStockLimitAlert(message);
+  }
+
+  function clearQuantityDraft(optionId: string) {
+    setQuantityDrafts((current) => {
+      if (!(optionId in current)) return current;
+      const next = { ...current };
+      delete next[optionId];
+      return next;
+    });
+  }
+
+  function commitQuantity(optionId: string, rawValue?: string) {
+    const product = productMap.get(optionId);
+    const existing = cartRef.current.find((item) => item.id === optionId);
+    if (!product || !existing) return;
+
+    const raw = (
+      rawValue ??
+      quantityDrafts[optionId] ??
+      String(existing.qty)
+    ).trim();
+    const nextQty = Number(raw);
+
+    if (!raw || !Number.isInteger(nextQty) || nextQty < 1) {
+      showStockLimitError(
+        `Enter a whole-number quantity of at least 1 for ${product.name}.`,
+      );
+      clearQuantityDraft(optionId);
+      return;
+    }
+
+    const reservedOtherQty = getReservedQtyForProduct(
+      cartRef.current,
+      product.productId,
+      optionId,
+    );
+    const maxForThisLine = Math.max(product.stockQty - reservedOtherQty, 0);
+
+    if (nextQty > maxForThisLine) {
+      const reservedMessage = reservedOtherQty
+        ? ` ${reservedOtherQty} unit(s) are already reserved by another option of this product.`
+        : "";
+      showStockLimitError(
+        `Cannot set ${product.name} to ${nextQty}. Only ${product.stockQty} unit(s) are in stock, so this line can use at most ${maxForThisLine}.${reservedMessage}`,
+      );
+      clearQuantityDraft(optionId);
+      return;
+    }
+
+    setError("");
+    setStockLimitAlert("");
+    setCart((current) =>
+      current.map((item) =>
+        item.id === optionId ? { ...item, qty: nextQty } : item,
+      ),
+    );
+    clearQuantityDraft(optionId);
+  }
+
   function addToCart(product: Product) {
     setError("");
     setParkedFeedback("");
@@ -925,7 +1081,7 @@ export default function CheckoutClient({
 
     if (existing) {
       if (reservedQty + 1 > product.stockQty) {
-        setError(
+        showStockLimitError(
           `Cannot oversell. ${product.name} only has ${product.stockQty} in stock.`,
         );
         return false;
@@ -939,12 +1095,12 @@ export default function CheckoutClient({
     }
 
     if (product.stockQty <= 0) {
-      setError(`${product.name} is out of stock.`);
+      showStockLimitError(`${product.name} is out of stock.`);
       return false;
     }
 
     if (reservedQty + 1 > product.stockQty) {
-      setError(
+      showStockLimitError(
         `Cannot oversell. ${product.name} only has ${product.stockQty} in stock.`,
       );
       return false;
@@ -957,6 +1113,7 @@ export default function CheckoutClient({
   function updateQty(optionId: string, direction: "increase" | "decrease") {
     const product = productMap.get(optionId);
     if (!product) return;
+    clearQuantityDraft(optionId);
     setError("");
     setScanFeedback(null);
     setParkedFeedback("");
@@ -973,7 +1130,7 @@ export default function CheckoutClient({
         optionId,
       );
       if (reservedOtherQty + nextQty > product.stockQty) {
-        setError(
+        showStockLimitError(
           `Cannot oversell. ${product.name} only has ${product.stockQty} in stock.`,
         );
         return current;
@@ -986,6 +1143,7 @@ export default function CheckoutClient({
   }
 
   function removeFromCart(optionId: string) {
+    clearQuantityDraft(optionId);
     setError("");
     setScanFeedback(null);
     setParkedFeedback("");
@@ -1773,15 +1931,12 @@ export default function CheckoutClient({
     focusScanInput();
   }
 
-  function removeQueuedSale(queuedSale: OfflineQueuedSale) {
-    if (
-      !window.confirm("Remove this queued sale from local offline storage?")
-    ) {
-      return;
-    }
-
+  function confirmRemoveQueuedSale(queuedSale: OfflineQueuedSale) {
     setQueuedSales((current) =>
       current.filter((entry) => entry.id !== queuedSale.id),
+    );
+    setActiveReceiptId((current) =>
+      current === queuedSale.id ? null : current,
     );
     setParkedFeedback(
       `Removed queued sale ${queuedSale.localReceiptNumber} from local storage.`,
@@ -1793,6 +1948,15 @@ export default function CheckoutClient({
     setParkedFeedback("");
     if (!cart.length)
       return setError("Please add at least one item to the cart.");
+    if (cartStockError) {
+      showStockLimitError(cartStockError);
+      return;
+    }
+    if (hasPendingQuantityEdits) {
+      return setError(
+        "Finish editing the item quantity before completing the sale.",
+      );
+    }
     if (discount < 0) return setError("Discount amount cannot be negative.");
     if (discount > subtotal + taxAmount)
       return setError("Discount cannot exceed the sale total.");
@@ -1840,6 +2004,70 @@ export default function CheckoutClient({
         .catch(() => ({ error: "Failed to create sale." }));
       setLoading(false);
       if (!response.ok) {
+        const conflicts: SaleApiConflict[] = Array.isArray(data?.conflicts)
+          ? data.conflicts
+          : [];
+        const stockConflicts = conflicts.filter(
+          (conflict) => conflict?.type === "INSUFFICIENT_STOCK",
+        );
+
+        if (response.status === 409 && stockConflicts.length) {
+          const availableStockByProduct = new Map<string, number>();
+
+          for (const conflict of stockConflicts) {
+            if (
+              typeof conflict.productId === "string" &&
+              typeof conflict.availableQty === "number" &&
+              Number.isFinite(conflict.availableQty)
+            ) {
+              availableStockByProduct.set(
+                conflict.productId,
+                Math.max(Math.trunc(conflict.availableQty), 0),
+              );
+            }
+          }
+
+          if (availableStockByProduct.size) {
+            setCart((current) =>
+              current.map((item) => {
+                const availableQty = availableStockByProduct.get(
+                  item.productId,
+                );
+                return availableQty === undefined
+                  ? item
+                  : { ...item, stockQty: availableQty };
+              }),
+            );
+          }
+
+          const conflictMessage = stockConflicts
+            .map((conflict) => conflict.message?.trim())
+            .filter((message): message is string => Boolean(message))
+            .join(" ");
+
+          showStockLimitError(
+            conflictMessage ||
+              data.error ||
+              "The available stock changed before this sale could be completed.",
+          );
+          router.refresh();
+          return;
+        }
+
+        if (response.status === 409 && conflicts.length) {
+          const conflictMessage = conflicts
+            .map((conflict) => conflict.message?.trim())
+            .filter((message): message is string => Boolean(message))
+            .join(" ");
+          setError(
+            conflictMessage ||
+              data.error ||
+              "The sale needs review before it can be completed.",
+          );
+          router.refresh();
+          return;
+        }
+
         setError(data.error ?? "Failed to create sale.");
         return;
       }
@@ -1888,6 +2116,37 @@ export default function CheckoutClient({
 
   return (
     <div className="space-y-6">
+      {isMounted && stockLimitAlert
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed inset-x-4 bottom-5 z-[9999] flex justify-center sm:inset-x-auto sm:right-6 sm:bottom-6 sm:block"
+              aria-live="assertive"
+              aria-atomic="true"
+            >
+              <div
+                role="alert"
+                className="pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm text-red-800 shadow-[0_22px_60px_rgba(28,25,23,0.22)] sm:w-[26rem]"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-red-900">
+                    Stock limit reached
+                  </div>
+                  <div className="mt-1 leading-5">{stockLimitAlert}</div>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Dismiss stock warning"
+                  className="shrink-0 rounded-lg px-2 py-1 text-lg leading-none text-red-500 transition hover:bg-red-50 hover:text-red-700"
+                  onClick={() => setStockLimitAlert("")}
+                >
+                  ×
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
       <Card>
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
@@ -1987,9 +2246,9 @@ export default function CheckoutClient({
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setActiveReceiptId(activeReceiptSale.id)}
+                onClick={() => viewQueuedReceipt(activeReceiptSale)}
               >
-                Open queued receipt
+                View queued receipt
               </Button>
             ) : null}
             {lastSyncedSale ? (
@@ -2065,7 +2324,7 @@ export default function CheckoutClient({
                       type="button"
                       variant="secondary"
                       className="w-full justify-center"
-                      onClick={() => setActiveReceiptId(queuedSale.id)}
+                      onClick={() => printQueuedReceipt(queuedSale)}
                     >
                       Print local receipt
                     </Button>
@@ -2087,15 +2346,82 @@ export default function CheckoutClient({
                     >
                       Retry sync
                     </Button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      className="w-full justify-center"
-                      disabled={queuedSale.status === "SYNCING"}
-                      onClick={() => removeQueuedSale(queuedSale)}
+                    <Popover
+                      enableOverlay
+                      placement="top-end"
+                      showArrow={false}
+                      overlayClassName="!z-[9998] !bg-stone-950/45 backdrop-blur-[2px]"
                     >
-                      Remove queued sale
-                    </Button>
+                      <Popover.Trigger>
+                        <span className="block w-full">
+                          <Button
+                            type="button"
+                            variant="danger"
+                            className="w-full justify-center"
+                            disabled={queuedSale.status === "SYNCING"}
+                          >
+                            Remove queued sale
+                          </Button>
+                        </span>
+                      </Popover.Trigger>
+                      <Popover.Content className="!z-[9999] !w-[min(28rem,calc(100vw-2rem))] !min-w-0 !rounded-3xl !border-stone-200 !bg-white !p-0 shadow-[0_28px_80px_-24px_rgba(28,25,23,0.42)]">
+                        {({ setOpen }) => (
+                          <div
+                            role="alertdialog"
+                            aria-modal="true"
+                            aria-labelledby={`remove-queued-sale-title-${queuedSale.id}`}
+                            aria-describedby={`remove-queued-sale-description-${queuedSale.id}`}
+                            className="p-5 sm:p-6"
+                          >
+                            <div className="flex items-start gap-4">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-red-200 bg-red-50 text-lg font-black text-red-700">
+                                !
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div
+                                  id={`remove-queued-sale-title-${queuedSale.id}`}
+                                  className="text-lg font-black text-stone-950"
+                                >
+                                  Remove queued sale?
+                                </div>
+                                <p
+                                  id={`remove-queued-sale-description-${queuedSale.id}`}
+                                  className="mt-2 text-sm leading-6 text-stone-600"
+                                >
+                                  This permanently removes receipt{" "}
+                                  {queuedSale.localReceiptNumber} from this
+                                  terminal&apos;s offline queue. It will no
+                                  longer be available here to sync, review, or
+                                  print.
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="justify-center sm:min-w-28"
+                                onClick={() => setOpen(false)}
+                              >
+                                Keep sale
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="danger"
+                                className="justify-center sm:min-w-32"
+                                onClick={() => {
+                                  confirmRemoveQueuedSale(queuedSale);
+                                  setOpen(false);
+                                }}
+                              >
+                                Remove sale
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </Popover.Content>
+                    </Popover>
                   </div>
                 </div>
               </div>
@@ -2105,35 +2431,43 @@ export default function CheckoutClient({
       </Card>
 
       {activeReceiptSale ? (
-        <Card>
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
-                Offline receipt
+        <div ref={offlineReceiptPreviewRef} className="scroll-mt-6">
+          <Card>
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                  Offline receipt
+                </div>
+                <h2 className="mt-2 text-2xl font-black text-stone-950">
+                  Temporary receipt preview
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-500">
+                  This receipt uses the local offline identifier{" "}
+                  {activeReceiptSale.localReceiptNumber}. It remains printable
+                  until the sale syncs to the server and gets a final receipt
+                  number.
+                </p>
               </div>
-              <h2 className="mt-2 text-2xl font-black text-stone-950">
-                Temporary receipt preview
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-500">
-                This receipt uses the local offline identifier{" "}
-                {activeReceiptSale.localReceiptNumber}. It remains printable
-                until the sale syncs to the server and gets a final receipt
-                number.
-              </p>
             </div>
-          </div>
 
-          <div className="mt-6">
-            <ThermalReceipt
-              sale={activeReceiptSale.receipt}
-              shop={shop}
-              currencySymbol={currencySymbol}
-              receiptHeader={receiptHeader}
-              receiptFooter={receiptFooter}
-              receiptWidth={receiptWidth}
-            />
-          </div>
-        </Card>
+            <div className="mt-6 flex justify-center sm:justify-start">
+              <div
+                className="bg-white"
+                style={{ width: receiptWidth, maxWidth: "100%" }}
+              >
+                <ThermalReceipt
+                  sale={activeReceiptSale.receipt}
+                  shop={shop}
+                  currencySymbol={currencySymbol}
+                  receiptHeader={receiptHeader}
+                  receiptFooter={receiptFooter}
+                  receiptWidth={receiptWidth}
+                  autoprint={pendingPrintReceiptId === activeReceiptSale.id}
+                />
+              </div>
+            </div>
+          </Card>
+        </div>
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
@@ -2495,9 +2829,40 @@ export default function CheckoutClient({
                       >
                         -
                       </Button>
-                      <span className="inline-flex h-10 min-w-10 items-center justify-center rounded-2xl bg-white px-3 font-semibold text-stone-900">
-                        {item.qty}
-                      </span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={Math.max(
+                          item.stockQty -
+                            getReservedQtyForProduct(
+                              cart,
+                              item.productId,
+                              item.id,
+                            ),
+                          1,
+                        )}
+                        aria-label={`Quantity for ${getOptionDisplayName(item)}`}
+                        title={`Type the quantity directly. Available stock: ${item.stockQty}`}
+                        value={quantityDrafts[item.id] ?? String(item.qty)}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) =>
+                          setQuantityDrafts((current) => ({
+                            ...current,
+                            [item.id]: event.target.value,
+                          }))
+                        }
+                        onBlur={(event) =>
+                          commitQuantity(item.id, event.currentTarget.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        className="h-10 w-20 rounded-2xl border border-stone-200 bg-white px-2 text-center font-semibold text-stone-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
+                      />
                       <Button
                         type="button"
                         variant="secondary"
@@ -2768,16 +3133,38 @@ export default function CheckoutClient({
                 <input
                   type="checkbox"
                   checked={isCreditSale}
-                  onChange={(event) => setIsCreditSale(event.target.checked)}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setIsCreditSale(checked);
+                    setShowCreditDueDateHint(checked);
+                  }}
                 />
                 Post as customer credit sale
               </label>
-              <Input
-                type="date"
-                value={creditDueDate}
-                onChange={(event) => setCreditDueDate(event.target.value)}
-                disabled={!isCreditSale}
-              />
+              <div className="relative">
+                <Input
+                  type="date"
+                  aria-label="Credit sale due date"
+                  title={
+                    isCreditSale
+                      ? "Credit sale due date"
+                      : "Enable customer credit sale to choose a due date"
+                  }
+                  value={creditDueDate}
+                  onChange={(event) => setCreditDueDate(event.target.value)}
+                  disabled={!isCreditSale}
+                />
+                {isCreditSale && showCreditDueDateHint ? (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-max max-w-[18rem] rounded-2xl border border-sky-200 bg-white px-3.5 py-2.5 text-xs font-medium leading-5 text-sky-800 shadow-[0_16px_38px_-22px_rgba(2,132,199,0.45)]"
+                  >
+                    <span className="absolute -top-1.5 right-6 h-3 w-3 rotate-45 border-l border-t border-sky-200 bg-white" />
+                    Set the payment due date for this credit sale here.
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             {!isCreditSale ? (

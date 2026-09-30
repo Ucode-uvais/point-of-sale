@@ -162,7 +162,7 @@ export default function CommandPalette({ role }: { role: ShopRole }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex h-12 items-center gap-3 rounded-full border border-white/80 bg-white/82 px-4 text-sm font-semibold text-stone-700 shadow-[0_18px_36px_-28px_rgba(28,25,23,0.35)] backdrop-blur transition hover:-translate-y-0.5 hover:border-emerald-200 hover:text-stone-950"
+        className="inline-flex h-12 items-center gap-3 rounded-full border border-white/80 bg-white/82 px-4 text-sm font-semibold text-stone-700 shadow-[0_18px_36px_-28px_rgba(28,25,23,0.35)] backdrop-blur transition hover:-translate-y-0.5 hover:border-emerald-200 hover:text-stone-950 cursor-pointer"
       >
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
           <svg
