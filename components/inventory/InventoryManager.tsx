@@ -70,23 +70,6 @@ type Batch = {
   };
 };
 
-type Movement = {
-  id: string;
-  type: string;
-  qtyChange: number;
-  referenceId: string | null;
-  notes: string | null;
-  reasonLabel: string | null;
-  reasonCode: string | null;
-  createdAt: string;
-  product: {
-    id: string;
-    name: string;
-    sku: string | null;
-    barcode: string | null;
-  };
-};
-
 type ReorderSuggestion = {
   productId: string;
   productName: string;
@@ -133,8 +116,6 @@ export default function InventoryManager({
   products,
   reasons,
   batches,
-  movements,
-  lowStockThreshold,
   currencySymbol,
   reorderSuggestions,
   inventoryFeatures,
@@ -142,8 +123,6 @@ export default function InventoryManager({
   products: Product[];
   reasons: InventoryReason[];
   batches: Batch[];
-  movements: Movement[];
-  lowStockThreshold: number;
   currencySymbol: string;
   reorderSuggestions: ReorderSuggestions;
   inventoryFeatures: {
@@ -611,15 +590,9 @@ export default function InventoryManager({
               reason-coded corrections in one chronological ledger.
             </p>
           </div>
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-3 py-2 text-xs font-semibold text-stone-500">
-            Showing latest {movements.length} movements
-          </div>
         </div>
         <div className="mt-5">
-          <InventoryMovementTable
-            movements={movements}
-            lowStockThreshold={lowStockThreshold}
-          />
+          <InventoryMovementTable />
         </div>
       </Card>
     </div>

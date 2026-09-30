@@ -369,7 +369,6 @@ model Customer {
   createdAt     DateTime                @default(now())
   updatedAt     DateTime                @updatedAt
 
-  
   @@index([shopId, isActive, updatedAt])
   @@index([shopId, type, isActive])
   @@index([shopId, phone])
@@ -464,31 +463,31 @@ model Sale {
 }
 
 model CashSession {
-  id                   String            @id @default(cuid())
-  shopId               String
-  userId               String
-  openedAt             DateTime          @default(now())
-  openingFloat         Decimal           @db.Decimal(12, 2)
-  closedAt             DateTime?
-  closedByUserId       String?
-  closingExpected      Decimal?          @db.Decimal(12, 2)
-  closingActual        Decimal?          @db.Decimal(12, 2)
-  variance             Decimal?          @db.Decimal(12, 2)
+  id                    String            @id @default(cuid())
+  shopId                String
+  userId                String
+  openedAt              DateTime          @default(now())
+  openingFloat          Decimal           @db.Decimal(12, 2)
+  closedAt              DateTime?
+  closedByUserId        String?
+  closingExpected       Decimal?          @db.Decimal(12, 2)
+  closingActual         Decimal?          @db.Decimal(12, 2)
+  variance              Decimal?          @db.Decimal(12, 2)
   denominationBreakdown Json?
-  reviewedByUserId     String?
-  reviewedAt           DateTime?
-  reviewNote           String?
-  reopenedByUserId     String?
-  reopenedAt           DateTime?
-  reopenReason         String?
-  notes                String?
-  status               CashSessionStatus @default(OPEN)
-  shop                 Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  user                 User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  closedByUser         User?             @relation("CashSessionClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
-  reviewedByUser       User?             @relation("CashSessionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
-  reopenedByUser       User?             @relation("CashSessionReopenedBy", fields: [reopenedByUserId], references: [id], onDelete: SetNull)
-  movements            CashMovement[]
+  reviewedByUserId      String?
+  reviewedAt            DateTime?
+  reviewNote            String?
+  reopenedByUserId      String?
+  reopenedAt            DateTime?
+  reopenReason          String?
+  notes                 String?
+  status                CashSessionStatus @default(OPEN)
+  shop                  Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  closedByUser          User?             @relation("CashSessionClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  reviewedByUser        User?             @relation("CashSessionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  reopenedByUser        User?             @relation("CashSessionReopenedBy", fields: [reopenedByUserId], references: [id], onDelete: SetNull)
+  movements             CashMovement[]
 
   @@index([shopId, openedAt])
   @@index([shopId, userId, status])
@@ -725,6 +724,7 @@ model InventoryMovement {
   createdAt   DateTime              @default(now())
 
   @@index([shopId, createdAt])
+  @@index([shopId, type, createdAt])
   @@index([productId, createdAt])
   @@index([reasonId])
 }
@@ -1251,40 +1251,40 @@ model EmailVerificationToken {
 }
 
 model ShopSetting {
-  id                    String                @id @default(cuid())
-  shopId                String                @unique
-  currencyCode          String                @default("PHP")
-  timezone              String                @default("Asia/Manila")
-  taxMode               TaxMode               @default(EXCLUSIVE)
-  currencySymbol        String                @default("₱")
-  taxRate               Decimal               @default(0) @db.Decimal(5, 2)
-  defaultPaymentMethods Json?
-  receiptHeader         String?
-  receiptFooter         String?
-  receiptWidth          String                @default("80mm")
-  receiptShowBrandMark  Boolean               @default(false)
-  printerSafeMode       Boolean               @default(true)
-  printerName           String?
-  printerConnection     PrinterConnectionType @default(MANUAL)
-  cashDrawerKickEnabled Boolean               @default(false)
-  barcodeScannerNotes   String?
-  lowStockEnabled       Boolean               @default(true)
-  lowStockThreshold     Int                   @default(5)
-  reorderSafetyStock    Int                   @default(3)
-  offlineStockStrict    Boolean               @default(false)
-  offlineStockMaxAgeMinutes Int               @default(240)
-  openingFloatRequired  Boolean               @default(true)
-  openingFloatAmount    Decimal               @default(0) @db.Decimal(12, 2)
-  batchTrackingEnabled  Boolean               @default(false)
-  expiryTrackingEnabled Boolean               @default(false)
-  fefoEnabled           Boolean               @default(false)
-  expiryAlertDays       Int                   @default(30)
-  salePrefix            String                @default("SAL")
-  receiptPrefix         String                @default("RCP")
-  purchasePrefix        String                @default("PO")
-  shop                  Shop                  @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  updatedAt             DateTime              @updatedAt
-  createdAt             DateTime              @default(now())
+  id                        String                @id @default(cuid())
+  shopId                    String                @unique
+  currencyCode              String                @default("PHP")
+  timezone                  String                @default("Asia/Manila")
+  taxMode                   TaxMode               @default(EXCLUSIVE)
+  currencySymbol            String                @default("₱")
+  taxRate                   Decimal               @default(0) @db.Decimal(5, 2)
+  defaultPaymentMethods     Json?
+  receiptHeader             String?
+  receiptFooter             String?
+  receiptWidth              String                @default("80mm")
+  receiptShowBrandMark      Boolean               @default(false)
+  printerSafeMode           Boolean               @default(true)
+  printerName               String?
+  printerConnection         PrinterConnectionType @default(MANUAL)
+  cashDrawerKickEnabled     Boolean               @default(false)
+  barcodeScannerNotes       String?
+  lowStockEnabled           Boolean               @default(true)
+  lowStockThreshold         Int                   @default(5)
+  reorderSafetyStock        Int                   @default(3)
+  offlineStockStrict        Boolean               @default(false)
+  offlineStockMaxAgeMinutes Int                   @default(240)
+  openingFloatRequired      Boolean               @default(true)
+  openingFloatAmount        Decimal               @default(0) @db.Decimal(12, 2)
+  batchTrackingEnabled      Boolean               @default(false)
+  expiryTrackingEnabled     Boolean               @default(false)
+  fefoEnabled               Boolean               @default(false)
+  expiryAlertDays           Int                   @default(30)
+  salePrefix                String                @default("SAL")
+  receiptPrefix             String                @default("RCP")
+  purchasePrefix            String                @default("PO")
+  shop                      Shop                  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  updatedAt                 DateTime              @updatedAt
+  createdAt                 DateTime              @default(now())
 }
 
 model WorkerJob {

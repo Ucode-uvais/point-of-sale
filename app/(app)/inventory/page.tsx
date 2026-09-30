@@ -13,58 +13,48 @@ export default async function InventoryPage() {
   const reasons = await ensureInventoryReasons(shopId);
   await ensureUnitsOfMeasure(shopId);
 
-  const [settings, products, movements, batches, reorderSuggestions] =
-    await Promise.all([
-      prisma.shopSetting.findUnique({ where: { shopId } }),
-      prisma.product.findMany({
-        where: { shopId },
-        include: {
-          baseUnitOfMeasure: true,
-          variants: {
-            where: { isActive: true },
-            orderBy: { createdAt: "asc" },
+  const [settings, products, batches, reorderSuggestions] = await Promise.all([
+    prisma.shopSetting.findUnique({ where: { shopId } }),
+    prisma.product.findMany({
+      where: { shopId },
+      include: {
+        baseUnitOfMeasure: true,
+        variants: {
+          where: { isActive: true },
+          orderBy: { createdAt: "asc" },
+        },
+        uomConversions: {
+          include: {
+            unitOfMeasure: true,
           },
-          uomConversions: {
-            include: {
-              unitOfMeasure: true,
-            },
-            orderBy: {
-              ratioToBase: "asc",
-            },
-          },
-          batches: {
-            orderBy: [{ expiryDate: "asc" }, { receivedAt: "desc" }],
+          orderBy: {
+            ratioToBase: "asc",
           },
         },
-        orderBy: [{ isActive: "desc" }, { name: "asc" }],
-      }),
-      prisma.inventoryMovement.findMany({
-        where: { shopId },
-        include: {
-          product: true,
-          reason: true,
+        batches: {
+          orderBy: [{ expiryDate: "asc" }, { receivedAt: "desc" }],
         },
-        orderBy: { createdAt: "desc" },
-        take: 80,
-      }),
-      prisma.productBatch.findMany({
-        where: { shopId },
-        include: {
-          product: {
-            select: {
-              id: true,
-              name: true,
-              sku: true,
-              trackBatches: true,
-              trackExpiry: true,
-            },
+      },
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+    }),
+    prisma.productBatch.findMany({
+      where: { shopId },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            trackBatches: true,
+            trackExpiry: true,
           },
         },
-        orderBy: [{ expiryDate: "asc" }, { receivedAt: "desc" }],
-        take: 120,
-      }),
-      getSmartReorderSuggestions(shopId),
-    ]);
+      },
+      orderBy: [{ expiryDate: "asc" }, { receivedAt: "desc" }],
+      take: 120,
+    }),
+    getSmartReorderSuggestions(shopId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -141,23 +131,6 @@ export default async function InventoryPage() {
             trackExpiry: batch.product.trackExpiry,
           },
         }))}
-        movements={movements.map((movement) => ({
-          id: movement.id,
-          type: movement.type,
-          qtyChange: movement.qtyChange,
-          referenceId: movement.referenceId,
-          notes: movement.notes,
-          reasonLabel: movement.reason?.label ?? null,
-          reasonCode: movement.reason?.code ?? null,
-          createdAt: movement.createdAt.toISOString(),
-          product: {
-            id: movement.product.id,
-            name: movement.product.name,
-            sku: movement.product.sku,
-            barcode: movement.product.barcode,
-          },
-        }))}
-        lowStockThreshold={settings?.lowStockThreshold ?? 5}
         currencySymbol={settings?.currencySymbol ?? "PHP "}
         reorderSuggestions={reorderSuggestions}
         inventoryFeatures={{
