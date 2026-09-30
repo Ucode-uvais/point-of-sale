@@ -564,7 +564,7 @@ const SidebarAccordion = ({
 };
 
 export default function AppSidebar(props: SidebarProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
 
   return (
     <Sidebar open={open} setOpen={setOpen}>

@@ -107,7 +107,7 @@ export const MobileSidebar = ({
   children,
   ...props
 }: React.ComponentProps<"div">) => {
-  const { open, setOpen } = useSidebar();
+  const [mobileOpen, setMobileOpen] = useState(false);
   return (
     <>
       <div
@@ -121,15 +121,15 @@ export const MobileSidebar = ({
         </div>
         <div className="flex justify-end z-20">
           <button
-            onClick={() => setOpen(!open)}
+            onClick={() => setMobileOpen((current) => !current)}
             className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 shadow-sm transition hover:bg-stone-50 hover:text-stone-900 active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-            aria-label="Open menu"
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
           >
             <Menu className="h-5 w-5" />
           </button>
         </div>
         <AnimatePresence>
-          {open && (
+          {mobileOpen && (
             <motion.div
               initial={{ x: "-100%", opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
@@ -150,7 +150,7 @@ export const MobileSidebar = ({
                 </div>
                 <button
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-500 shadow-sm transition hover:bg-stone-50 hover:text-stone-900 active:scale-95 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                  onClick={() => setOpen(false)}
+                  onClick={() => setMobileOpen(false)}
                   aria-label="Close menu"
                 >
                   <X className="h-5 w-5" />
@@ -158,9 +158,11 @@ export const MobileSidebar = ({
               </div>
 
               {/* Scrollable Content Area */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-                {children}
-              </div>
+              <SidebarProvider open={true} setOpen={setMobileOpen}>
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                  {children}
+                </div>
+              </SidebarProvider>
             </motion.div>
           )}
         </AnimatePresence>
