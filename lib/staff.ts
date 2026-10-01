@@ -1,8 +1,42 @@
-import { Prisma, ShopRole } from '@prisma/client';
-import { hasPermission as membershipHasPermission } from '@/lib/permissions';
-import { prisma } from '@/lib/prisma';
+//staff.ts from lib
 
-export const STAFF_LOGIN_ACTION = 'LOGIN_SUCCESS';
+import { Prisma, ShopRole } from "@prisma/client";
+import { hasPermission as membershipHasPermission } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+
+export const STAFF_LOGIN_ACTION = "LOGIN_SUCCESS";
+
+export function canManageStaffTargetRole(
+  actorRole: ShopRole,
+  targetRole: ShopRole,
+) {
+  return (
+    actorRole === "ADMIN" ||
+    (actorRole === "MANAGER" && targetRole === "CASHIER")
+  );
+}
+
+export type StaffManagementRole = Extract<ShopRole, "ADMIN" | "MANAGER">;
+
+export type ManagedStaffShop = {
+  id: string;
+  name: string;
+  slug: string;
+  managementRole: StaffManagementRole;
+};
+
+function getMembershipManagementRole(
+  role: ShopRole,
+  customPermissions: unknown,
+): StaffManagementRole | null {
+  if (role === "CASHIER") {
+    return null;
+  }
+
+  return membershipHasPermission(role, customPermissions, "MANAGE_STAFF")
+    ? role
+    : null;
+}
 
 export async function getManagedShops(userId: string) {
   const [ownedShops, memberships] = await Promise.all([
@@ -11,14 +45,14 @@ export async function getManagedShops(userId: string) {
       select: {
         id: true,
         name: true,
-        slug: true
+        slug: true,
       },
-      orderBy: { name: 'asc' }
+      orderBy: { name: "asc" },
     }),
     prisma.userShop.findMany({
       where: {
         userId,
-        isActive: true
+        isActive: true,
       },
       select: {
         role: true,
@@ -27,56 +61,90 @@ export async function getManagedShops(userId: string) {
           select: {
             id: true,
             name: true,
-            slug: true
-          }
-        }
+            slug: true,
+          },
+        },
       },
-      orderBy: { assignedAt: 'asc' }
-    })
+      orderBy: { assignedAt: "asc" },
+    }),
   ]);
 
-  const managedMembershipShops = memberships
-    .filter((membership) => membershipHasPermission(membership.role, membership.customPermissions, 'MANAGE_STAFF'))
-    .map((membership) => membership.shop);
+  const deduped = new Map<string, ManagedStaffShop>();
 
-  const deduped = new Map<string, { id: string; name: string; slug: string }>();
+  for (const membership of memberships) {
+    const managementRole = getMembershipManagementRole(
+      membership.role,
+      membership.customPermissions,
+    );
 
-  for (const shop of [...ownedShops, ...managedMembershipShops]) {
-    deduped.set(shop.id, shop);
+    if (!managementRole) {
+      continue;
+    }
+
+    const existing = deduped.get(membership.shop.id);
+    if (!existing || managementRole === "ADMIN") {
+      deduped.set(membership.shop.id, {
+        ...membership.shop,
+        managementRole,
+      });
+    }
   }
 
-  return [...deduped.values()].sort((left, right) => left.name.localeCompare(right.name));
+  // Shop ownership carries admin-level staff-management authority for that shop.
+  // Apply it last so an unusual lower-role membership cannot downgrade the owner.
+  for (const shop of ownedShops) {
+    deduped.set(shop.id, {
+      ...shop,
+      managementRole: "ADMIN",
+    });
+  }
+
+  return [...deduped.values()].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
 }
 
-export async function assertManagedShopAccess(userId: string, shopId: string) {
+export async function getStaffManagementRoleForShop(
+  userId: string,
+  shopId: string,
+): Promise<StaffManagementRole | null> {
   const [ownedShop, membership] = await Promise.all([
     prisma.shop.findFirst({
       where: {
         id: shopId,
-        ownerId: userId
+        ownerId: userId,
       },
-      select: { id: true }
+      select: { id: true },
     }),
     prisma.userShop.findFirst({
       where: {
         userId,
         shopId,
-        isActive: true
+        isActive: true,
       },
       select: {
         role: true,
-        customPermissions: true
-      }
-    })
+        customPermissions: true,
+      },
+    }),
   ]);
 
   if (ownedShop) {
-    return true;
+    return "ADMIN";
   }
 
-  return Boolean(
-    membership && membershipHasPermission(membership.role, membership.customPermissions, 'MANAGE_STAFF')
+  if (!membership) {
+    return null;
+  }
+
+  return getMembershipManagementRole(
+    membership.role,
+    membership.customPermissions,
   );
+}
+
+export async function assertManagedShopAccess(userId: string, shopId: string) {
+  return Boolean(await getStaffManagementRoleForShop(userId, shopId));
 }
 
 export function formatRoleLabel(role: ShopRole) {
@@ -86,34 +154,36 @@ export function formatRoleLabel(role: ShopRole) {
 export async function syncUserDefaultShopId(
   tx: Prisma.TransactionClient,
   userId: string,
-  preferredShopId?: string | null
+  preferredShopId?: string | null,
 ) {
   const [user, activeMemberships] = await Promise.all([
     tx.user.findUnique({
       where: { id: userId },
-      select: { defaultShopId: true }
+      select: { defaultShopId: true },
     }),
     tx.userShop.findMany({
       where: {
         userId,
-        isActive: true
+        isActive: true,
       },
       select: { shopId: true },
-      orderBy: { assignedAt: 'asc' }
-    })
+      orderBy: { assignedAt: "asc" },
+    }),
   ]);
 
-  const activeShopIds = new Set(activeMemberships.map((membership) => membership.shopId));
+  const activeShopIds = new Set(
+    activeMemberships.map((membership) => membership.shopId),
+  );
   const nextDefaultShopId =
     preferredShopId && activeShopIds.has(preferredShopId)
       ? preferredShopId
       : user?.defaultShopId && activeShopIds.has(user.defaultShopId)
         ? user.defaultShopId
-        : activeMemberships[0]?.shopId ?? null;
+        : (activeMemberships[0]?.shopId ?? null);
 
   await tx.user.update({
     where: { id: userId },
-    data: { defaultShopId: nextDefaultShopId }
+    data: { defaultShopId: nextDefaultShopId },
   });
 
   return nextDefaultShopId;
@@ -122,14 +192,14 @@ export async function syncUserDefaultShopId(
 export async function countActiveAdmins(
   tx: Prisma.TransactionClient,
   shopId: string,
-  excludeMembershipId?: string
+  excludeMembershipId?: string,
 ) {
   return tx.userShop.count({
     where: {
       shopId,
-      role: 'ADMIN',
+      role: "ADMIN",
       isActive: true,
-      ...(excludeMembershipId ? { id: { not: excludeMembershipId } } : {})
-    }
+      ...(excludeMembershipId ? { id: { not: excludeMembershipId } } : {}),
+    },
   });
 }

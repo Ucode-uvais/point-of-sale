@@ -56,7 +56,7 @@ export default async function ProtectedLayout({
         <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[linear-gradient(180deg,rgba(255,255,255,0.6),transparent)]" />
         <div className="mx-auto max-w-375 px-4 py-4 sm:px-6 lg:px-8 lg:py-6 relative z-10">
           <div className="mb-6 flex items-center justify-end gap-3">
-            <CommandPalette role={role} />
+            <CommandPalette role={role} permissions={permissions} />
             <NotificationsBell
               initialNotifications={notifications.map((notification) => ({
                 id: notification.id,

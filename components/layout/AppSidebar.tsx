@@ -226,7 +226,7 @@ const sections: Array<{ title: string; links: NavLink[] }> = [
         label: "Staff",
         description: "Manage access.",
         icon: "staff",
-        minRole: "ADMIN",
+        minRole: "MANAGER",
         requiredPermission: "MANAGE_STAFF",
       },
     ],

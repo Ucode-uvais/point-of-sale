@@ -381,7 +381,7 @@ export default function InventoryMovementTable() {
 
       <div className="hidden overflow-hidden rounded-3xl border border-stone-200 md:block">
         <div className="overflow-x-auto">
-          <table className="min-w-[1040px] w-full table-fixed text-left text-sm">
+          <table className="min-w-260 w-full table-fixed text-left text-sm">
             <thead className="bg-stone-50 text-stone-500">
               <tr>
                 <th className="w-[150px] px-4 py-3.5 font-semibold">

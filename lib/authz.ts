@@ -42,6 +42,10 @@ export async function requirePermission(
   return context;
 }
 
+export async function requireStaffManagement() {
+  return requirePermission("MANAGE_STAFF", "MANAGER");
+}
+
 export async function requireAnyPermission(
   permissions: readonly PermissionKey[],
   minRole: ShopRole = "CASHIER",

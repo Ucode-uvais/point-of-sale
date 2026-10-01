@@ -1,12 +1,15 @@
 //route.ts from app/api/staff/[id]/pin
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/lib/authz";
+import { requireStaffManagement } from "@/lib/authz";
 import { apiErrorResponse } from "@/lib/api";
 import { logActivity } from "@/lib/activity";
 import { hashPassword } from "@/lib/auth/password";
 import { staffPinSchema } from "@/lib/auth/validation";
 import { prisma } from "@/lib/prisma";
-import { assertManagedShopAccess } from "@/lib/staff";
+import {
+  canManageStaffTargetRole,
+  getStaffManagementRoleForShop,
+} from "@/lib/staff";
 
 export async function POST(
   request: Request,
@@ -14,7 +17,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { userId } = await requirePermission("MANAGE_STAFF");
+    const { userId } = await requireStaffManagement();
     const body = await request.json();
     const parsed = staffPinSchema.safeParse(body);
 
@@ -45,10 +48,20 @@ export async function POST(
       );
     }
 
-    const hasAccess = await assertManagedShopAccess(userId, membership.shopId);
-    if (!hasAccess) {
+    const managementRole = await getStaffManagementRoleForShop(
+      userId,
+      membership.shopId,
+    );
+    if (!managementRole) {
       return NextResponse.json(
         { error: "You do not have access to that staff record." },
+        { status: 403 },
+      );
+    }
+
+    if (!canManageStaffTargetRole(managementRole, membership.role)) {
+      return NextResponse.json(
+        { error: "Managers can only manage cashier staff accounts." },
         { status: 403 },
       );
     }

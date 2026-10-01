@@ -34,10 +34,12 @@ export default function StaffListManager({
   initialItems,
   shops,
   defaultShopId,
+  showRoleControls,
 }: {
   initialItems: SerializedStaffListItem[];
   shops: ManagedShop[];
   defaultShopId: string;
+  showRoleControls: boolean;
 }) {
   const [items, setItems] = useState(initialItems);
   const [query, setQuery] = useState("");
@@ -53,13 +55,13 @@ export default function StaffListManager({
     const term = query.trim().toLowerCase();
 
     return items.filter((item) => {
+      const searchableValues = showRoleControls
+        ? [item.name, item.email, item.role, item.shopName]
+        : [item.name, item.email, item.shopName];
       const matchesQuery =
-        !term ||
-        [item.name, item.email, item.role, item.shopName]
-          .join(" ")
-          .toLowerCase()
-          .includes(term);
-      const matchesRole = !roleFilter || item.role === roleFilter;
+        !term || searchableValues.join(" ").toLowerCase().includes(term);
+      const matchesRole =
+        !showRoleControls || !roleFilter || item.role === roleFilter;
       const matchesShop = !shopFilter || item.shopId === shopFilter;
       const matchesStatus =
         !statusFilter ||
@@ -68,7 +70,7 @@ export default function StaffListManager({
 
       return matchesQuery && matchesRole && matchesShop && matchesStatus;
     });
-  }, [items, query, roleFilter, shopFilter, statusFilter]);
+  }, [items, query, roleFilter, shopFilter, statusFilter, showRoleControls]);
 
   const shopItems = useMemo(
     () => items.filter((item) => !shopFilter || item.shopId === shopFilter),
@@ -131,8 +133,9 @@ export default function StaffListManager({
               Team access at a glance
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-500">
-              Search staff, review role and shop assignment, and quickly
-              activate or deactivate access without leaving the workspace.
+              {showRoleControls
+                ? "Search staff, review role and shop assignment, and quickly activate or deactivate access without leaving the workspace."
+                : "Search cashiers, review shop assignments, and quickly activate or deactivate access without leaving the workspace."}
             </p>
           </div>
 
@@ -164,23 +167,35 @@ export default function StaffListManager({
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
+        <div
+          className={`mt-6 grid gap-3 ${
+            showRoleControls
+              ? "lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]"
+              : "lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)_minmax(0,1fr)]"
+          }`}
+        >
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search name, email, role, or shop..."
+            placeholder={
+              showRoleControls
+                ? "Search name, email, role, or shop..."
+                : "Search name, email, or shop..."
+            }
           />
 
-          <select
-            className={selectClassName}
-            value={roleFilter}
-            onChange={(event) => setRoleFilter(event.target.value)}
-          >
-            <option value="">All roles</option>
-            <option value="ADMIN">Admin</option>
-            <option value="MANAGER">Manager</option>
-            <option value="CASHIER">Cashier</option>
-          </select>
+          {showRoleControls ? (
+            <select
+              className={selectClassName}
+              value={roleFilter}
+              onChange={(event) => setRoleFilter(event.target.value)}
+            >
+              <option value="">All roles</option>
+              <option value="ADMIN">Admin</option>
+              <option value="MANAGER">Manager</option>
+              <option value="CASHIER">Cashier</option>
+            </select>
+          ) : null}
 
           <select
             className={selectClassName}
@@ -229,7 +244,9 @@ export default function StaffListManager({
               Assignments and access
             </h2>
             <p className="mt-1 text-sm text-stone-500">
-              {filteredItems.length} record(s) matched the current filters.
+              {showRoleControls
+                ? `${filteredItems.length} record(s) matched the current filters.`
+                : `${filteredItems.length} cashier account(s) matched the current filters.`}
             </p>
           </div>
 
@@ -244,7 +261,9 @@ export default function StaffListManager({
               <thead className="bg-stone-50 text-stone-500">
                 <tr>
                   <th className="px-4 py-3.5">Staff</th>
-                  <th className="px-4 py-3.5">Role</th>
+                  {showRoleControls ? (
+                    <th className="px-4 py-3.5">Role</th>
+                  ) : null}
                   <th className="px-4 py-3.5">Shop</th>
                   <th className="px-4 py-3.5">Status</th>
                   <th className="px-4 py-3.5">Assigned</th>
@@ -269,9 +288,11 @@ export default function StaffListManager({
                         {item.email}
                       </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <Badge tone={roleTone(item.role)}>{item.role}</Badge>
-                    </td>
+                    {showRoleControls ? (
+                      <td className="px-4 py-4">
+                        <Badge tone={roleTone(item.role)}>{item.role}</Badge>
+                      </td>
+                    ) : null}
                     <td className="px-4 py-4">
                       <div className="font-medium text-stone-900">
                         {item.shopName}

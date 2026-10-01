@@ -5,7 +5,10 @@ import { requirePagePermission } from "@/lib/authz";
 import { getManagedShops } from "@/lib/staff";
 
 export default async function NewStaffPage() {
-  const { userId, shopId } = await requirePagePermission("MANAGE_STAFF");
+  const { userId, shopId } = await requirePagePermission(
+    "MANAGE_STAFF",
+    "MANAGER",
+  );
   const shops = await getManagedShops(userId);
 
   return (

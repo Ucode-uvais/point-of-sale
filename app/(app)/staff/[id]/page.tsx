@@ -16,14 +16,18 @@ export default async function StaffDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { userId } = await requirePagePermission("MANAGE_STAFF");
+  const { userId } = await requirePagePermission("MANAGE_STAFF", "MANAGER");
   const shops = await getManagedShops(userId);
-  const shopIds = shops.map((entry) => entry.id);
+  const staffVisibility = shops.map((shop) =>
+    shop.managementRole === "ADMIN"
+      ? { shopId: shop.id }
+      : { shopId: shop.id, role: "CASHIER" as const },
+  );
 
   const membership = await prisma.userShop.findFirst({
     where: {
       id,
-      shopId: { in: shopIds },
+      OR: staffVisibility,
     },
     include: {
       shop: {

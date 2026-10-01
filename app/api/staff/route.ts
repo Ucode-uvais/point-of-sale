@@ -1,106 +1,150 @@
 //route.ts from app/api/staff
+import type { Prisma, ShopRole } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/lib/authz";
+import { requireStaffManagement } from "@/lib/authz";
 import { apiErrorResponse } from "@/lib/api";
 import { logActivity } from "@/lib/activity";
 import { hashPassword } from "@/lib/auth/password";
 import { staffCreateSchema } from "@/lib/auth/validation";
 import { prisma } from "@/lib/prisma";
 import { serializeStaffListItem } from "@/lib/serializers/staff";
-import { assertManagedShopAccess, getManagedShops } from "@/lib/staff";
+import {
+  canManageStaffTargetRole,
+  getManagedShops,
+  getStaffManagementRoleForShop,
+} from "@/lib/staff";
 
 export async function GET(request: Request) {
   try {
-    const { userId } = await requirePermission("MANAGE_STAFF");
+    const { userId } = await requireStaffManagement();
     const url = new URL(request.url);
     const query = url.searchParams.get("query")?.trim() ?? "";
-    const role = url.searchParams.get("role")?.trim() ?? "";
+    const requestedRole = url.searchParams.get("role")?.trim() ?? "";
+    const role: ShopRole | null =
+      requestedRole === "ADMIN" ||
+      requestedRole === "MANAGER" ||
+      requestedRole === "CASHIER"
+        ? requestedRole
+        : null;
     const status = url.searchParams.get("status")?.trim() ?? "";
     const shopId = url.searchParams.get("shopId")?.trim() ?? "";
 
     const managedShops = await getManagedShops(userId);
-    const allowedShopIds = new Set(managedShops.map((shop) => shop.id));
-    const filteredShopIds =
-      shopId && allowedShopIds.has(shopId)
-        ? [shopId]
-        : managedShops.map((shop) => shop.id);
+    const selectedShops = shopId
+      ? managedShops.filter((shop) => shop.id === shopId)
+      : managedShops;
+    const staffVisibility: Prisma.UserShopWhereInput[] = [];
 
-    const items = await prisma.userShop.findMany({
-      where: {
-        shopId: { in: filteredShopIds },
-        ...(role === "ADMIN" || role === "MANAGER" || role === "CASHIER"
-          ? { role }
-          : {}),
-        ...(status === "active"
-          ? { isActive: true }
-          : status === "inactive"
-            ? { isActive: false }
-            : {}),
-        ...(query
-          ? {
-              OR: [
-                {
-                  user: {
-                    name: {
-                      contains: query,
-                      mode: "insensitive",
-                    },
-                  },
+    for (const shop of selectedShops) {
+      if (shop.managementRole === "MANAGER") {
+        if (!role || role === "CASHIER") {
+          staffVisibility.push({
+            shopId: shop.id,
+            role: "CASHIER",
+          });
+        }
+        continue;
+      }
+
+      staffVisibility.push({
+        shopId: shop.id,
+        ...(role ? { role } : {}),
+      });
+    }
+
+    if (!staffVisibility.length) {
+      return NextResponse.json({
+        items: [],
+        shops: managedShops.map((shop) => ({
+          id: shop.id,
+          name: shop.name,
+          slug: shop.slug,
+        })),
+      });
+    }
+
+    const searchFilter: Prisma.UserShopWhereInput | null = query
+      ? {
+          OR: [
+            {
+              user: {
+                name: {
+                  contains: query,
+                  mode: "insensitive",
                 },
-                {
-                  user: {
-                    email: {
-                      contains: query,
-                      mode: "insensitive",
-                    },
-                  },
-                },
-                {
-                  shop: {
-                    name: {
-                      contains: query,
-                      mode: "insensitive",
-                    },
-                  },
-                },
-              ],
-            }
-          : {}),
-      },
-      include: {
-        shop: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            authAuditLogs: {
-              where: { action: "LOGIN_SUCCESS" },
-              orderBy: { createdAt: "desc" },
-              take: 1,
-              select: {
-                id: true,
-                action: true,
-                createdAt: true,
-                ipAddress: true,
-                userAgent: true,
               },
+            },
+            {
+              user: {
+                email: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+            {
+              shop: {
+                name: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+          ],
+        }
+      : null;
+
+    const where: Prisma.UserShopWhereInput = {
+      AND: [{ OR: staffVisibility }, ...(searchFilter ? [searchFilter] : [])],
+      ...(status === "active"
+        ? { isActive: true }
+        : status === "inactive"
+          ? { isActive: false }
+          : {}),
+    };
+
+    const staffInclude = {
+      shop: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          authAuditLogs: {
+            where: { action: "LOGIN_SUCCESS" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              action: true,
+              createdAt: true,
+              ipAddress: true,
+              userAgent: true,
             },
           },
         },
       },
+    } satisfies Prisma.UserShopInclude;
+
+    const items = await prisma.userShop.findMany({
+      where,
+      include: staffInclude,
       orderBy: [{ isActive: "desc" }, { assignedAt: "desc" }],
     });
 
     return NextResponse.json({
-      items: items.map(serializeStaffListItem),
-      shops: managedShops,
+      items: items.map((item) => serializeStaffListItem(item)),
+      shops: managedShops.map((shop) => ({
+        id: shop.id,
+        name: shop.name,
+        slug: shop.slug,
+      })),
     });
   } catch (error) {
     return apiErrorResponse(error, "Unable to load staff.");
@@ -109,7 +153,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { userId } = await requirePermission("MANAGE_STAFF");
+    const { userId } = await requireStaffManagement();
     const body = await request.json();
     const parsed = staffCreateSchema.safeParse(body);
 
@@ -120,13 +164,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const hasShopAccess = await assertManagedShopAccess(
+    const managementRole = await getStaffManagementRoleForShop(
       userId,
       parsed.data.shopId,
     );
-    if (!hasShopAccess) {
+
+    if (!managementRole) {
       return NextResponse.json(
         { error: "You do not have access to that shop." },
+        { status: 403 },
+      );
+    }
+
+    if (!canManageStaffTargetRole(managementRole, parsed.data.role)) {
+      return NextResponse.json(
+        { error: "Managers can only create cashier staff accounts." },
         { status: 403 },
       );
     }

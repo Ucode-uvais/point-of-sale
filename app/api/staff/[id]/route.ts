@@ -1,16 +1,20 @@
 //route.ts from app/api/staff/[id]
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/lib/authz";
+import { requireStaffManagement } from "@/lib/authz";
 import { apiErrorResponse } from "@/lib/api";
 import { logActivity } from "@/lib/activity";
 import { staffUpdateSchema } from "@/lib/auth/validation";
-import { normalizePermissionOverride } from "@/lib/permissions";
+import {
+  isPermissionAllowedForRole,
+  normalizePermissionOverride,
+} from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { serializeStaffListItem } from "@/lib/serializers/staff";
 import {
-  assertManagedShopAccess,
+  canManageStaffTargetRole,
   countActiveAdmins,
+  getStaffManagementRoleForShop,
   syncUserDefaultShopId,
 } from "@/lib/staff";
 
@@ -20,8 +24,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { userId, shopId: activeShopId } =
-      await requirePermission("MANAGE_STAFF");
+    const { userId, shopId: activeShopId } = await requireStaffManagement();
     const body = await request.json();
     const parsed = staffUpdateSchema.safeParse(body);
 
@@ -59,15 +62,45 @@ export async function PATCH(
       );
     }
 
-    const [hasCurrentShopAccess, hasTargetShopAccess] = await Promise.all([
-      assertManagedShopAccess(userId, existing.shopId),
-      assertManagedShopAccess(userId, parsed.data.shopId),
+    const [currentManagementRole, targetManagementRole] = await Promise.all([
+      getStaffManagementRoleForShop(userId, existing.shopId),
+      getStaffManagementRoleForShop(userId, parsed.data.shopId),
     ]);
 
-    if (!hasCurrentShopAccess || !hasTargetShopAccess) {
+    if (!currentManagementRole || !targetManagementRole) {
       return NextResponse.json(
         { error: "You do not have access to that staff record." },
         { status: 403 },
+      );
+    }
+
+    if (!canManageStaffTargetRole(currentManagementRole, existing.role)) {
+      return NextResponse.json(
+        { error: "Managers can only manage cashier staff accounts." },
+        { status: 403 },
+      );
+    }
+
+    if (!canManageStaffTargetRole(targetManagementRole, parsed.data.role)) {
+      return NextResponse.json(
+        {
+          error:
+            "Managers can only assign the Cashier role. An admin is required to assign Manager or Admin.",
+        },
+        { status: 403 },
+      );
+    }
+
+    if (
+      !isPermissionAllowedForRole(parsed.data.role, "MANAGE_STAFF") &&
+      parsed.data.customPermissions.includes("MANAGE_STAFF")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Cashier assignments cannot receive Manage staff. Change the role to Manager or Admin before enabling this permission.",
+        },
+        { status: 400 },
       );
     }
 

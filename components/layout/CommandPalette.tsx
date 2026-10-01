@@ -4,12 +4,14 @@ import { ShopRole } from "@prisma/client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Input from "@/components/ui/Input";
+import type { PermissionKey, PermissionState } from "@/lib/permissions";
 
 type QuickAction = {
   id: string;
   label: string;
   description: string;
   minRole: ShopRole;
+  requiredPermission?: PermissionKey;
   href?: string;
   action?: () => void;
 };
@@ -20,7 +22,13 @@ const ROLE_WEIGHT: Record<ShopRole, number> = {
   ADMIN: 3,
 };
 
-export default function CommandPalette({ role }: { role: ShopRole }) {
+export default function CommandPalette({
+  role,
+  permissions,
+}: {
+  role: ShopRole;
+  permissions: PermissionState;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -102,6 +110,7 @@ export default function CommandPalette({ role }: { role: ShopRole }) {
         label: "Manage staff",
         description: "Open employee access, role, and login controls.",
         minRole: "ADMIN",
+        requiredPermission: "MANAGE_STAFF",
         href: "/staff",
       },
       {
@@ -118,7 +127,9 @@ export default function CommandPalette({ role }: { role: ShopRole }) {
   );
 
   const visibleActions = actions.filter(
-    (item) => ROLE_WEIGHT[role] >= ROLE_WEIGHT[item.minRole],
+    (item) =>
+      ROLE_WEIGHT[role] >= ROLE_WEIGHT[item.minRole] &&
+      (!item.requiredPermission || permissions[item.requiredPermission]),
   );
   const filteredActions = visibleActions.filter((item) =>
     [item.label, item.description]
@@ -227,7 +238,7 @@ export default function CommandPalette({ role }: { role: ShopRole }) {
                     key={item.id}
                     type="button"
                     onClick={() => runAction(item)}
-                    className="flex w-full items-start justify-between gap-4 rounded-[24px] border border-stone-200 bg-[linear-gradient(180deg,rgba(250,250,249,0.98),rgba(245,245,244,0.88))] px-4 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.96))]"
+                    className="flex w-full items-start justify-between gap-4 rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,rgba(250,250,249,0.98),rgba(245,245,244,0.88))] px-4 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-[linear-gradient(180deg,rgba(236,253,245,0.96),rgba(255,255,255,0.96))]"
                   >
                     <div>
                       <div className="font-semibold text-stone-900">
@@ -243,7 +254,7 @@ export default function CommandPalette({ role }: { role: ShopRole }) {
                   </button>
                 ))
               ) : (
-                <div className="rounded-[24px] border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-500">
+                <div className="rounded-3xl border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-500">
                   No quick actions matched that search.
                 </div>
               )}

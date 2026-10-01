@@ -1,6 +1,6 @@
 //route.ts from app/api/staff/[id]/reset-password
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/lib/authz";
+import { requireStaffManagement } from "@/lib/authz";
 import { apiErrorResponse } from "@/lib/api";
 import { logActivity } from "@/lib/activity";
 import { logAuthAudit } from "@/lib/auth/audit";
@@ -10,7 +10,10 @@ import {
 } from "@/lib/auth/password-reset";
 import { passwordResetGenerateSchema } from "@/lib/auth/validation";
 import { prisma } from "@/lib/prisma";
-import { assertManagedShopAccess } from "@/lib/staff";
+import {
+  canManageStaffTargetRole,
+  getStaffManagementRoleForShop,
+} from "@/lib/staff";
 import {
   buildAppUrl,
   isMailConfigured,
@@ -22,18 +25,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    if (!isMailConfigured()) {
-      return NextResponse.json(
-        {
-          error:
-            "Email delivery is not configured yet. Set the SMTP and mail environment variables before issuing staff password resets.",
-        },
-        { status: 503 },
-      );
-    }
-
     const { id } = await params;
-    const { userId } = await requirePermission("MANAGE_STAFF");
+    const { userId } = await requireStaffManagement();
     const body = await request.json().catch(() => ({}));
     const parsed = passwordResetGenerateSchema.safeParse(body);
 
@@ -73,11 +66,31 @@ export async function POST(
       );
     }
 
-    const hasAccess = await assertManagedShopAccess(userId, membership.shopId);
-    if (!hasAccess) {
+    const managementRole = await getStaffManagementRoleForShop(
+      userId,
+      membership.shopId,
+    );
+    if (!managementRole) {
       return NextResponse.json(
         { error: "You do not have access to that staff record." },
         { status: 403 },
+      );
+    }
+
+    if (!canManageStaffTargetRole(managementRole, membership.role)) {
+      return NextResponse.json(
+        { error: "Managers can only manage cashier staff accounts." },
+        { status: 403 },
+      );
+    }
+
+    if (!isMailConfigured()) {
+      return NextResponse.json(
+        {
+          error:
+            "Email delivery is not configured yet. Set the SMTP and mail environment variables before issuing staff password resets.",
+        },
+        { status: 503 },
       );
     }
 

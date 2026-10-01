@@ -7,13 +7,23 @@ import { serializeStaffListItem } from "@/lib/serializers/staff";
 import { getManagedShops } from "@/lib/staff";
 
 export default async function StaffPage() {
-  const { userId, shopId } = await requirePagePermission("MANAGE_STAFF");
+  const { userId, shopId } = await requirePagePermission(
+    "MANAGE_STAFF",
+    "MANAGER",
+  );
   const shops = await getManagedShops(userId);
-  const shopIds = shops.map((entry) => entry.id);
+  const showRoleControls = shops.some(
+    (shop) => shop.managementRole === "ADMIN",
+  );
+  const staffVisibility = shops.map((shop) =>
+    shop.managementRole === "ADMIN"
+      ? { shopId: shop.id }
+      : { shopId: shop.id, role: "CASHIER" as const },
+  );
 
   const items = await prisma.userShop.findMany({
     where: {
-      shopId: { in: shopIds },
+      OR: staffVisibility,
     },
     include: {
       shop: {
@@ -50,12 +60,17 @@ export default async function StaffPage() {
     <div className="space-y-6">
       <AppHeader
         title="Staff"
-        subtitle="Manage employee accounts, role assignments, active shop access, and sign-in visibility across the shops you administer."
+        subtitle={
+          showRoleControls
+            ? "Manage employee accounts, role assignments, active shop access, and sign-in visibility across the shops you administer."
+            : "Manage cashier accounts, active shop access, and sign-in visibility across the shops you manage."
+        }
       />
       <StaffListManager
         initialItems={items.map(serializeStaffListItem)}
         shops={shops}
         defaultShopId={shopId}
+        showRoleControls={showRoleControls}
       />
     </div>
   );
