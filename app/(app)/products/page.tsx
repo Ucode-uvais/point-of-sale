@@ -161,6 +161,16 @@ export default async function ProductsPage({
             ? "Update product details, pricing, variants, media, and merchandising settings."
             : "Create a product with pricing, variants, media, and inventory defaults."
         }
+        breadcrumbs={
+          editId && product
+            ? [
+                { label: "Home", href: "/dashboard" },
+                { label: "Products", href: "/products" },
+                { label: "Product List", href: "/products/product-list" },
+                { label: `Edit Product (${product.name})` },
+              ]
+            : undefined
+        }
       />
       <ProductManager
         key={`${shopId}:${editId ?? "new"}`}

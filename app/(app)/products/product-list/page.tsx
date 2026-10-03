@@ -129,6 +129,11 @@ export default async function ProductListPage() {
       <AppHeader
         title="Product List"
         subtitle="Browse, search, and manage product catalog records without entering the product editor."
+        breadcrumbs={[
+          { label: "Home", href: "/dashboard" },
+          { label: "Products", href: "/products" },
+          { label: "Product List" },
+        ]}
       />
 
       <ProductList

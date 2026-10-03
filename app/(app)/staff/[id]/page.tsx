@@ -81,6 +81,11 @@ export default async function StaffDetailPage({
       <AppHeader
         title={membership.user.name ?? membership.user.email}
         subtitle="Review this staff profile, adjust the current assignment, generate a reset link, and inspect recent auth activity."
+        breadcrumbs={[
+          { label: "Home", href: "/dashboard" },
+          { label: "Staff", href: "/staff" },
+          { label: membership.user.name ?? membership.user.email },
+        ]}
       />
       <StaffDetailManager
         initialStaff={{

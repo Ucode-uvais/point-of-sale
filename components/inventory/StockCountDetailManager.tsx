@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Badge from "@/components/ui/Badge";
@@ -480,12 +479,6 @@ export default function StockCountDetailManager({
                 {loadingAction === "CANCEL" ? "Cancelling..." : "Cancel count"}
               </Button>
             ) : null}
-
-            <Link href="/stock-counts">
-              <Button type="button" variant="ghost">
-                Back to stock counts
-              </Button>
-            </Link>
           </div>
         </Card>
 

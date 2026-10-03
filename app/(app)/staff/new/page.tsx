@@ -16,6 +16,11 @@ export default async function NewStaffPage() {
       <AppHeader
         title="Add staff"
         subtitle="Create a new employee account, choose the managed shop assignment, and set the initial role without touching the rest of the auth flow."
+        breadcrumbs={[
+          { label: "Home", href: "/dashboard" },
+          { label: "Staff", href: "/staff" },
+          { label: "Add staff" },
+        ]}
       />
       <StaffCreateForm shops={shops} defaultShopId={shopId} />
     </div>

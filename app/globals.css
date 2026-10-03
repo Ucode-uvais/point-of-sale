@@ -118,6 +118,18 @@ a {
   text-decoration: none;
 }
 
+.breadcrumb-link:hover {
+  color: #1c1917;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.breadcrumb-link:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid #059669;
+  outline-offset: 3px;
+}
+
 button,
 input,
 select,

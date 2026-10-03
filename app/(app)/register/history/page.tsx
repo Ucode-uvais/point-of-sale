@@ -1,51 +1,51 @@
-import AppHeader from '@/components/layout/AppHeader';
-import RegisterHistoryTable from '@/components/register/RegisterHistoryTable';
-import { hasRole, requirePageRole } from '@/lib/authz';
-import { prisma } from '@/lib/prisma';
-import { serializeCashSession } from '@/lib/serializers/register';
+import AppHeader from "@/components/layout/AppHeader";
+import RegisterHistoryTable from "@/components/register/RegisterHistoryTable";
+import { hasRole, requirePageRole } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import { serializeCashSession } from "@/lib/serializers/register";
 
 export default async function RegisterHistoryPage() {
-  const { shopId, userId, role } = await requirePageRole('CASHIER');
+  const { shopId, userId, role } = await requirePageRole("CASHIER");
   const [settings, sessions] = await Promise.all([
     prisma.shopSetting.findUnique({ where: { shopId } }),
     prisma.cashSession.findMany({
       where: {
         shopId,
-        ...(hasRole(role, 'MANAGER') ? {} : { userId })
+        ...(hasRole(role, "MANAGER") ? {} : { userId }),
       },
       include: {
         user: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         closedByUser: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         reviewedByUser: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         reopenedByUser: {
           select: {
             id: true,
             name: true,
-            email: true
-          }
-        }
+            email: true,
+          },
+        },
       },
-      orderBy: { openedAt: 'desc' },
-      take: 100
-    })
+      orderBy: { openedAt: "desc" },
+      take: 100,
+    }),
   ]);
 
   return (
@@ -53,11 +53,16 @@ export default async function RegisterHistoryPage() {
       <AppHeader
         title="Register history"
         subtitle="Review open and closed drawer sessions, approve cashier closeouts, reopen shifts with a reason, and print Z-read summaries."
+        breadcrumbs={[
+          { label: "Home", href: "/dashboard" },
+          { label: "Registers" },
+          { label: "Register history" },
+        ]}
       />
       <RegisterHistoryTable
         sessions={sessions.map(serializeCashSession)}
-        currencySymbol={settings?.currencySymbol ?? 'PHP '}
-        canManageSessions={hasRole(role, 'MANAGER')}
+        currencySymbol={settings?.currencySymbol ?? "PHP "}
+        canManageSessions={hasRole(role, "MANAGER")}
       />
     </div>
   );

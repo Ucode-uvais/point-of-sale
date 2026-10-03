@@ -1,21 +1,25 @@
-import AppHeader from '@/components/layout/AppHeader';
-import ReportFilters from '@/components/reports/ReportFilters';
-import ReportsNav from '@/components/reports/ReportsNav';
-import Card from '@/components/ui/Card';
-import { requirePagePermission } from '@/lib/authz';
-import { compactNumber, dateTime, money } from '@/lib/format';
-import { getCashierReportData, getReportFilterOptions, parseReportFilters } from '@/lib/reporting';
+import AppHeader from "@/components/layout/AppHeader";
+import ReportFilters from "@/components/reports/ReportFilters";
+import ReportsNav from "@/components/reports/ReportsNav";
+import Card from "@/components/ui/Card";
+import { requirePagePermission } from "@/lib/authz";
+import { compactNumber, dateTime, money } from "@/lib/format";
+import {
+  getCashierReportData,
+  getReportFilterOptions,
+  parseReportFilters,
+} from "@/lib/reporting";
 
 export default async function CashierReportsPage({
-  searchParams
+  searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { shopId } = await requirePagePermission('VIEW_REPORTS');
+  const { shopId } = await requirePagePermission("VIEW_REPORTS");
   const filters = await parseReportFilters(searchParams);
   const [options, report] = await Promise.all([
     getReportFilterOptions(shopId),
-    getCashierReportData(shopId, filters)
+    getCashierReportData(shopId, filters),
   ]);
 
   return (
@@ -23,6 +27,11 @@ export default async function CashierReportsPage({
       <AppHeader
         title="Cashier Reports"
         subtitle="Review revenue handled, basket behavior, refund and void activity, and drawer sessions in one operational cashier view."
+        breadcrumbs={[
+          { label: "Home", href: "/dashboard" },
+          { label: "Reports", href: "/reports" },
+          { label: "Cashier reports" },
+        ]}
       />
 
       <ReportsNav />
@@ -40,85 +49,142 @@ export default async function CashierReportsPage({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <div className="text-sm text-stone-500">Revenue handled</div>
-          <div className="mt-2 text-3xl font-black text-stone-900">{money(report.summary.totalRevenue, options.currencySymbol)}</div>
+          <div className="mt-2 text-3xl font-black text-stone-900">
+            {money(report.summary.totalRevenue, options.currencySymbol)}
+          </div>
         </Card>
         <Card>
           <div className="text-sm text-stone-500">Sales count</div>
-          <div className="mt-2 text-3xl font-black text-stone-900">{compactNumber(report.summary.totalTransactions)}</div>
+          <div className="mt-2 text-3xl font-black text-stone-900">
+            {compactNumber(report.summary.totalTransactions)}
+          </div>
         </Card>
         <Card>
           <div className="text-sm text-stone-500">Refund count</div>
-          <div className="mt-2 text-3xl font-black text-amber-700">{compactNumber(report.summary.refundCount)}</div>
-          <div className="mt-2 text-sm text-stone-500">{money(report.summary.refundTotal, options.currencySymbol)}</div>
+          <div className="mt-2 text-3xl font-black text-amber-700">
+            {compactNumber(report.summary.refundCount)}
+          </div>
+          <div className="mt-2 text-sm text-stone-500">
+            {money(report.summary.refundTotal, options.currencySymbol)}
+          </div>
         </Card>
         <Card>
           <div className="text-sm text-stone-500">Void count</div>
-          <div className="mt-2 text-3xl font-black text-red-700">{compactNumber(report.summary.voidCount)}</div>
-          <div className="mt-2 text-sm text-stone-500">{money(report.summary.voidTotal, options.currencySymbol)}</div>
+          <div className="mt-2 text-3xl font-black text-red-700">
+            {compactNumber(report.summary.voidCount)}
+          </div>
+          <div className="mt-2 text-sm text-stone-500">
+            {money(report.summary.voidTotal, options.currencySymbol)}
+          </div>
         </Card>
       </div>
 
       <Card>
-        <h2 className="text-xl font-black text-stone-900">Cashier performance</h2>
+        <h2 className="text-xl font-black text-stone-900">
+          Cashier performance
+        </h2>
         <div className="mt-4 space-y-3">
-          {report.topCashiers.length ? report.topCashiers.map((entry) => (
-            <div key={entry.cashierId} className="rounded-2xl border border-stone-200 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-stone-900">{entry.cashierName}</div>
-                  <div className="text-sm text-stone-500">
-                    {entry.salesCount} sale(s) / {entry.shiftCount} shift(s)
-                  </div>
-                  <div className="text-xs text-stone-500">
-                    Refunds {entry.refundCount} / Voids {entry.voidCount}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-black text-stone-900">{money(entry.revenueHandled, options.currencySymbol)}</div>
-                  <div className="text-sm text-stone-500">
-                    Avg basket {entry.averageBasketSize.toFixed(1)} item(s)
-                  </div>
-                  <div className="text-xs text-stone-500">
-                    Avg ticket {money(entry.averageTicket, options.currencySymbol)}
-                  </div>
-                  {entry.shiftCount ? (
-                    <div className="text-xs text-stone-500">
-                      Shift actual {money(entry.shiftActual, options.currencySymbol)} / variance {money(entry.shiftVariance, options.currencySymbol)}
+          {report.topCashiers.length ? (
+            report.topCashiers.map((entry) => (
+              <div
+                key={entry.cashierId}
+                className="rounded-2xl border border-stone-200 p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-stone-900">
+                      {entry.cashierName}
                     </div>
-                  ) : null}
+                    <div className="text-sm text-stone-500">
+                      {entry.salesCount} sale(s) / {entry.shiftCount} shift(s)
+                    </div>
+                    <div className="text-xs text-stone-500">
+                      Refunds {entry.refundCount} / Voids {entry.voidCount}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-black text-stone-900">
+                      {money(entry.revenueHandled, options.currencySymbol)}
+                    </div>
+                    <div className="text-sm text-stone-500">
+                      Avg basket {entry.averageBasketSize.toFixed(1)} item(s)
+                    </div>
+                    <div className="text-xs text-stone-500">
+                      Avg ticket{" "}
+                      {money(entry.averageTicket, options.currencySymbol)}
+                    </div>
+                    {entry.shiftCount ? (
+                      <div className="text-xs text-stone-500">
+                        Shift actual{" "}
+                        {money(entry.shiftActual, options.currencySymbol)} /
+                        variance{" "}
+                        {money(entry.shiftVariance, options.currencySymbol)}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
+            ))
+          ) : (
+            <div className="text-sm text-stone-500">
+              No cashier sales matched that range.
             </div>
-          )) : <div className="text-sm text-stone-500">No cashier sales matched that range.</div>}
+          )}
         </div>
       </Card>
 
       <Card>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xl font-black text-stone-900">Shift totals</h2>
-          <div className="text-sm text-stone-500">{report.summary.shiftCount} session(s)</div>
+          <div className="text-sm text-stone-500">
+            {report.summary.shiftCount} session(s)
+          </div>
         </div>
         <div className="mt-4 space-y-3">
-          {report.shiftSessions.length ? report.shiftSessions.map((entry) => (
-            <div key={entry.id} className="rounded-2xl border border-stone-200 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-stone-900">{entry.cashierName}</div>
-                  <div className="text-sm text-stone-500">
-                    Opened {dateTime(entry.openedAt)}{entry.closedAt ? ` / Closed ${dateTime(entry.closedAt)}` : ' / Still open'}
+          {report.shiftSessions.length ? (
+            report.shiftSessions.map((entry) => (
+              <div
+                key={entry.id}
+                className="rounded-2xl border border-stone-200 p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-stone-900">
+                      {entry.cashierName}
+                    </div>
+                    <div className="text-sm text-stone-500">
+                      Opened {dateTime(entry.openedAt)}
+                      {entry.closedAt
+                        ? ` / Closed ${dateTime(entry.closedAt)}`
+                        : " / Still open"}
+                    </div>
+                    <div className="text-xs text-stone-500">
+                      Status {entry.status}
+                    </div>
                   </div>
-                  <div className="text-xs text-stone-500">Status {entry.status}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm text-stone-500">Expected {money(entry.closingExpected, options.currencySymbol)}</div>
-                  <div className="font-black text-stone-900">Actual {money(entry.closingActual, options.currencySymbol)}</div>
-                  <div className={`text-xs ${entry.variance < 0 ? 'text-red-700' : 'text-stone-500'}`}>
-                    Variance {money(entry.variance, options.currencySymbol)}
+                  <div className="text-right">
+                    <div className="text-sm text-stone-500">
+                      Expected{" "}
+                      {money(entry.closingExpected, options.currencySymbol)}
+                    </div>
+                    <div className="font-black text-stone-900">
+                      Actual{" "}
+                      {money(entry.closingActual, options.currencySymbol)}
+                    </div>
+                    <div
+                      className={`text-xs ${entry.variance < 0 ? "text-red-700" : "text-stone-500"}`}
+                    >
+                      Variance {money(entry.variance, options.currencySymbol)}
+                    </div>
                   </div>
                 </div>
               </div>
+            ))
+          ) : (
+            <div className="text-sm text-stone-500">
+              No cash sessions opened in the selected range.
             </div>
-          )) : <div className="text-sm text-stone-500">No cash sessions opened in the selected range.</div>}
+          )}
         </div>
       </Card>
 
@@ -126,38 +192,78 @@ export default async function CashierReportsPage({
         <Card>
           <h2 className="text-xl font-black text-stone-900">Refund report</h2>
           <div className="mt-4 space-y-3">
-            {report.refunds.length ? report.refunds.map((entry) => (
-              <div key={entry.id} className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-stone-900">{entry.adjustmentNumber} / {entry.saleNumber}</div>
-                    <div className="text-sm text-stone-600">{entry.type} by {entry.cashierName}</div>
-                    <div className="text-sm text-stone-500">{entry.reason}</div>
-                    <div className="mt-1 text-xs text-stone-500">Approved by {entry.approvedByName} / {dateTime(entry.createdAt)}</div>
+            {report.refunds.length ? (
+              report.refunds.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-stone-900">
+                        {entry.adjustmentNumber} / {entry.saleNumber}
+                      </div>
+                      <div className="text-sm text-stone-600">
+                        {entry.type} by {entry.cashierName}
+                      </div>
+                      <div className="text-sm text-stone-500">
+                        {entry.reason}
+                      </div>
+                      <div className="mt-1 text-xs text-stone-500">
+                        Approved by {entry.approvedByName} /{" "}
+                        {dateTime(entry.createdAt)}
+                      </div>
+                    </div>
+                    <div className="font-black text-amber-700">
+                      {money(entry.totalAmount, options.currencySymbol)}
+                    </div>
                   </div>
-                  <div className="font-black text-amber-700">{money(entry.totalAmount, options.currencySymbol)}</div>
                 </div>
+              ))
+            ) : (
+              <div className="text-sm text-stone-500">
+                No refund or exchange adjustments in this range.
               </div>
-            )) : <div className="text-sm text-stone-500">No refund or exchange adjustments in this range.</div>}
+            )}
           </div>
         </Card>
 
         <Card>
           <h2 className="text-xl font-black text-stone-900">Void report</h2>
           <div className="mt-4 space-y-3">
-            {report.voids.length ? report.voids.map((entry) => (
-              <div key={entry.id} className="rounded-2xl border border-red-200 bg-red-50/60 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-stone-900">{entry.adjustmentNumber} / {entry.saleNumber}</div>
-                    <div className="text-sm text-stone-600">Voided by {entry.cashierName}</div>
-                    <div className="text-sm text-stone-500">{entry.reason}</div>
-                    <div className="mt-1 text-xs text-stone-500">Approved by {entry.approvedByName} / {dateTime(entry.createdAt)}</div>
+            {report.voids.length ? (
+              report.voids.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="rounded-2xl border border-red-200 bg-red-50/60 p-4"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-stone-900">
+                        {entry.adjustmentNumber} / {entry.saleNumber}
+                      </div>
+                      <div className="text-sm text-stone-600">
+                        Voided by {entry.cashierName}
+                      </div>
+                      <div className="text-sm text-stone-500">
+                        {entry.reason}
+                      </div>
+                      <div className="mt-1 text-xs text-stone-500">
+                        Approved by {entry.approvedByName} /{" "}
+                        {dateTime(entry.createdAt)}
+                      </div>
+                    </div>
+                    <div className="font-black text-red-700">
+                      {money(entry.totalAmount, options.currencySymbol)}
+                    </div>
                   </div>
-                  <div className="font-black text-red-700">{money(entry.totalAmount, options.currencySymbol)}</div>
                 </div>
+              ))
+            ) : (
+              <div className="text-sm text-stone-500">
+                No void adjustments in this range.
               </div>
-            )) : <div className="text-sm text-stone-500">No void adjustments in this range.</div>}
+            )}
           </div>
         </Card>
       </div>

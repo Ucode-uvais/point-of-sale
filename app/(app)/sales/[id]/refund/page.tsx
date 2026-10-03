@@ -1,45 +1,45 @@
-import { notFound } from 'next/navigation';
-import AppHeader from '@/components/layout/AppHeader';
-import SaleAdjustmentManager from '@/components/sales/SaleAdjustmentManager';
-import { requirePagePermission } from '@/lib/authz';
-import { prisma } from '@/lib/prisma';
-import { saleDetailInclude, serializeSaleDetail } from '@/lib/sale-adjustments';
+import { notFound } from "next/navigation";
+import AppHeader from "@/components/layout/AppHeader";
+import SaleAdjustmentManager from "@/components/sales/SaleAdjustmentManager";
+import { requirePagePermission } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import { saleDetailInclude, serializeSaleDetail } from "@/lib/sale-adjustments";
 
 export default async function SaleRefundPage({
-  params
+  params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { shopId, session } = await requirePagePermission('REFUND_SALES');
+  const { shopId, session } = await requirePagePermission("REFUND_SALES");
 
   const [sale, settings, products] = await Promise.all([
     prisma.sale.findFirst({
       where: { id, shopId },
-      include: saleDetailInclude
+      include: saleDetailInclude,
     }),
     prisma.shopSetting.findUnique({
       where: { shopId },
       select: {
         currencySymbol: true,
-        taxRate: true
-      }
+        taxRate: true,
+      },
     }),
     prisma.product.findMany({
       where: {
         shopId,
-        isActive: true
+        isActive: true,
       },
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
       select: {
         id: true,
         name: true,
         sku: true,
         barcode: true,
         price: true,
-        stockQty: true
-      }
-    })
+        stockQty: true,
+      },
+    }),
   ]);
 
   if (!sale) {
@@ -51,6 +51,12 @@ export default async function SaleRefundPage({
       <AppHeader
         title={`Refund / Exchange ${sale.saleNumber}`}
         subtitle="Process full refunds, partial refunds, damaged returns, and exchanges with manager approval and a printable adjustment receipt."
+        breadcrumbs={[
+          { label: "Home", href: "/dashboard" },
+          { label: "Sales", href: "/sales" },
+          { label: sale.saleNumber, href: `/sales/${sale.id}` },
+          { label: "Refund / Exchange" },
+        ]}
       />
 
       <SaleAdjustmentManager
@@ -58,11 +64,11 @@ export default async function SaleRefundPage({
         sale={serializeSaleDetail(sale)}
         products={products.map((product) => ({
           ...product,
-          price: product.price.toString()
+          price: product.price.toString(),
         }))}
         taxRate={Number(settings?.taxRate ?? 0)}
-        currencySymbol={settings?.currencySymbol ?? '₱'}
-        currentUserEmail={session.user.email ?? ''}
+        currencySymbol={settings?.currencySymbol ?? "₱"}
+        currentUserEmail={session.user.email ?? ""}
       />
     </div>
   );

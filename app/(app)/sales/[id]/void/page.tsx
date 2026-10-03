@@ -1,29 +1,29 @@
-import { notFound } from 'next/navigation';
-import AppHeader from '@/components/layout/AppHeader';
-import SaleAdjustmentManager from '@/components/sales/SaleAdjustmentManager';
-import { requirePagePermission } from '@/lib/authz';
-import { prisma } from '@/lib/prisma';
-import { saleDetailInclude, serializeSaleDetail } from '@/lib/sale-adjustments';
+import { notFound } from "next/navigation";
+import AppHeader from "@/components/layout/AppHeader";
+import SaleAdjustmentManager from "@/components/sales/SaleAdjustmentManager";
+import { requirePagePermission } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import { saleDetailInclude, serializeSaleDetail } from "@/lib/sale-adjustments";
 
 export default async function SaleVoidPage({
-  params
+  params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { shopId, session } = await requirePagePermission('VOID_SALES');
+  const { shopId, session } = await requirePagePermission("VOID_SALES");
 
   const [sale, settings] = await Promise.all([
     prisma.sale.findFirst({
       where: { id, shopId },
-      include: saleDetailInclude
+      include: saleDetailInclude,
     }),
     prisma.shopSetting.findUnique({
       where: { shopId },
       select: {
-        currencySymbol: true
-      }
-    })
+        currencySymbol: true,
+      },
+    }),
   ]);
 
   if (!sale) {
@@ -35,13 +35,19 @@ export default async function SaleVoidPage({
       <AppHeader
         title={`Void ${sale.saleNumber}`}
         subtitle="Reverse the entire sale, restore stock, record the payout method, and keep the approval trail attached to the adjustment."
+        breadcrumbs={[
+          { label: "Home", href: "/dashboard" },
+          { label: "Sales", href: "/sales" },
+          { label: sale.saleNumber, href: `/sales/${sale.id}` },
+          { label: "Void" },
+        ]}
       />
 
       <SaleAdjustmentManager
         mode="void"
         sale={serializeSaleDetail(sale)}
-        currencySymbol={settings?.currencySymbol ?? '₱'}
-        currentUserEmail={session.user.email ?? ''}
+        currencySymbol={settings?.currencySymbol ?? "₱"}
+        currentUserEmail={session.user.email ?? ""}
       />
     </div>
   );

@@ -16,16 +16,15 @@ import {
 } from "@/lib/product-merchandising";
 import { prisma } from "@/lib/prisma";
 import { summarizeConversions } from "@/lib/uom";
-import { ArrowLeftIcon } from "lucide-react";
+
+const secondaryLinkClassName =
+  "inline-flex h-10 items-center justify-center rounded-xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-700 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950 focus:outline-none focus:ring-4 focus:ring-emerald-500/10";
 
 type ProductDetailsPageProps = {
   params: Promise<{
     id: string;
   }>;
 };
-
-const backLinkClassName =
-  "inline-flex h-10 items-center justify-center rounded-xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-700 shadow-sm transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950 focus:outline-none focus:ring-4 focus:ring-emerald-500/10";
 
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -225,13 +224,15 @@ export default async function ProductDetailsPage({
       <AppHeader
         title="Product Details"
         subtitle="Review product identity, merchandising, inventory, variants, batches, and change history."
+        breadcrumbs={[
+          { label: "Home", href: "/dashboard" },
+          { label: "Products", href: "/products" },
+          { label: "Product List", href: "/products/product-list" },
+          { label: product.name },
+        ]}
       />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Link href="/products/product-list" className={backLinkClassName}>
-          <ArrowLeftIcon /> Back to Product list
-        </Link>
-
         {canEditProducts ? (
           <ProductDetailsActions
             productId={product.id}
@@ -677,7 +678,7 @@ export default async function ProductDetailsPage({
                       : ""
                   }&size=medium`}
                   target="_blank"
-                  className={backLinkClassName}
+                  className={secondaryLinkClassName}
                 >
                   {entry.variantId
                     ? `Print ${entry.variantLabel || entry.sku || "variant"}`
