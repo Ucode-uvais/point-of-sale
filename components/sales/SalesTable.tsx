@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -17,17 +20,114 @@ type Sale = {
   isCreditSale?: boolean;
 };
 
+type SalesPageResponse = {
+  items: Sale[];
+  pagination: {
+    pageSize: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
+  error?: string;
+};
+
+const PAGE_SIZE = 25;
+
+async function fetchSalesPage(cursor: string | null, signal?: AbortSignal) {
+  const params = new URLSearchParams({ pageSize: String(PAGE_SIZE) });
+  if (cursor) params.set("cursor", cursor);
+
+  const response = await fetch(`/api/sales?${params.toString()}`, {
+    signal,
+    cache: "no-store",
+  });
+  const data = (await response
+    .json()
+    .catch(() => null)) as SalesPageResponse | null;
+
+  if (!response.ok || !data?.items || !data.pagination) {
+    throw new Error(data?.error ?? "Unable to load sales history.");
+  }
+
+  return data;
+}
+
 export default function SalesTable({
-  sales,
   currencySymbol,
   canRefundSales,
   canVoidSales,
 }: {
-  sales: Sale[];
   currencySymbol: string;
   canRefundSales: boolean;
   canVoidSales: boolean;
 }) {
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [page, setPage] = useState(1);
+  const [cursorHistory, setCursorHistory] = useState<Array<string | null>>([
+    null,
+  ]);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadInitialPage() {
+      try {
+        const result = await fetchSalesPage(null, controller.signal);
+        setSales(result.items);
+        setHasMore(result.pagination.hasMore);
+        setNextCursor(result.pagination.nextCursor);
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load sales history.",
+        );
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+
+    void loadInitialPage();
+    return () => controller.abort();
+  }, []);
+
+  async function navigateToPage(
+    cursor: string | null,
+    nextPage: number,
+    recordCursor: boolean,
+  ) {
+    setLoading(true);
+    setError("");
+
+    try {
+      const result = await fetchSalesPage(cursor);
+      setSales(result.items);
+      setHasMore(result.pagination.hasMore);
+      setNextCursor(result.pagination.nextCursor);
+      setPage(nextPage);
+
+      if (recordCursor) {
+        setCursorHistory((current) => {
+          const updated = current.slice(0, page);
+          updated[nextPage - 1] = cursor;
+          return updated;
+        });
+      }
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load sales history.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <Card>
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -43,9 +143,15 @@ export default function SalesTable({
           </p>
         </div>
         <div className="rounded-full border border-stone-200 bg-stone-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
-          {sales.length} record(s)
+          {sales.length} record(s) on this page
         </div>
       </div>
+
+      {error ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       <div className="mt-4 overflow-hidden rounded-[26px] border border-stone-200">
         <div className="overflow-x-auto">
@@ -139,7 +245,7 @@ export default function SalesTable({
           </table>
         </div>
 
-        {!sales.length ? (
+        {!loading && !error && !sales.length ? (
           <div className="border-t border-stone-200 bg-stone-50 px-6 py-8 text-center text-sm text-stone-500">
             <div className="font-semibold text-stone-900">No sales yet.</div>
             <div className="mt-2">
@@ -148,6 +254,50 @@ export default function SalesTable({
             </div>
           </div>
         ) : null}
+
+        {loading && !sales.length ? (
+          <div className="border-t border-stone-200 bg-white px-6 py-8 text-center text-sm font-medium text-stone-500">
+            Loading sales history...
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-stone-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs text-stone-500">
+          Page <span className="font-semibold text-stone-700">{page}</span>
+          {" · "}
+          {sales.length} record(s) on this page
+          {hasMore
+            ? " · More records available"
+            : page > 1
+              ? " · End of results"
+              : ""}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+          <button
+            type="button"
+            disabled={page <= 1 || loading}
+            onClick={() =>
+              void navigateToPage(
+                cursorHistory[page - 2] ?? null,
+                page - 1,
+                false,
+              )
+            }
+            className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            disabled={!hasMore || !nextCursor || loading}
+            onClick={() => void navigateToPage(nextCursor, page + 1, true)}
+            className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </Card>
   );

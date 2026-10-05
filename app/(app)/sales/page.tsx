@@ -5,14 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 export default async function SalesPage() {
   const { shopId, permissions } = await getActiveShopContext();
-  const [sales, settings] = await Promise.all([
-    prisma.sale.findMany({
-      where: { shopId },
-      orderBy: { createdAt: "desc" },
-      take: 75,
-    }),
-    prisma.shopSetting.findUnique({ where: { shopId } }),
-  ]);
+  const settings = await prisma.shopSetting.findUnique({ where: { shopId } });
 
   return (
     <div className="space-y-6">
@@ -21,11 +14,6 @@ export default async function SalesPage() {
         subtitle="Review transactions, inspect payment details, and reopen receipt pages without leaving the audit trail."
       />
       <SalesTable
-        sales={sales.map((sale) => ({
-          ...sale,
-          totalAmount: sale.totalAmount.toString(),
-          createdAt: sale.createdAt.toISOString(),
-        }))}
         currencySymbol={settings?.currencySymbol ?? "₱"}
         canRefundSales={permissions.REFUND_SALES}
         canVoidSales={permissions.VOID_SALES}

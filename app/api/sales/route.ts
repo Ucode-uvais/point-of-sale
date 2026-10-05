@@ -25,6 +25,9 @@ import { prisma } from "@/lib/prisma";
 import { CASH_PAYMENT_METHOD, getActiveCashSession } from "@/lib/register";
 import { calculateTaxBreakdown } from "@/lib/shop-settings";
 
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
+
 type SaleConflict = {
   type: "INSUFFICIENT_STOCK" | "PRICE_CHANGED" | "PRODUCT_UNAVAILABLE";
   productId: string;
@@ -108,25 +111,72 @@ function conflictResponse(error: string, conflicts: SaleConflict[]) {
   );
 }
 
-export async function GET() {
+function clampPageSize(value: string | null) {
+  const parsed = Number(value ?? DEFAULT_PAGE_SIZE);
+  if (!Number.isFinite(parsed)) return DEFAULT_PAGE_SIZE;
+  return Math.min(MAX_PAGE_SIZE, Math.max(10, Math.trunc(parsed)));
+}
+
+export async function GET(request: Request) {
   try {
     const { shopId } = await requireRole("CASHIER");
-    const sales = await prisma.sale.findMany({
+    const params = new URL(request.url).searchParams;
+    const pageSize = clampPageSize(params.get("pageSize"));
+    const cursor = params.get("cursor")?.trim() || null;
+    const rows = await prisma.sale.findMany({
       where: { shopId },
-      include: { items: true },
-      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        saleNumber: true,
+        receiptNumber: true,
+        paymentMethod: true,
+        cashierName: true,
+        createdAt: true,
+        totalAmount: true,
+        customerName: true,
+        status: true,
+        isCreditSale: true,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: pageSize + 1,
+      ...(cursor
+        ? {
+            cursor: { id: cursor },
+            skip: 1,
+          }
+        : {}),
     });
 
-    return NextResponse.json({
-      sales: sales.map((sale) => ({
-        ...serializeSale(sale),
-        items: sale.items.map((item) => ({
-          ...item,
-          unitPrice: item.unitPrice.toString(),
-          lineTotal: item.lineTotal.toString(),
+    const hasMore = rows.length > pageSize;
+    const visibleRows = hasMore ? rows.slice(0, pageSize) : rows;
+    const lastItem = visibleRows.at(-1);
+
+    return NextResponse.json(
+      {
+        items: visibleRows.map((sale) => ({
+          id: sale.id,
+          saleNumber: sale.saleNumber,
+          receiptNumber: sale.receiptNumber,
+          paymentMethod: sale.paymentMethod,
+          cashierName: sale.cashierName,
+          createdAt: sale.createdAt.toISOString(),
+          totalAmount: sale.totalAmount.toString(),
+          customerName: sale.customerName,
+          status: sale.status,
+          isCreditSale: sale.isCreditSale,
         })),
-      })),
-    });
+        pagination: {
+          pageSize,
+          hasMore,
+          nextCursor: hasMore && lastItem ? lastItem.id : null,
+        },
+      },
+      {
+        headers: {
+          "Cache-Control": "private, no-store",
+        },
+      },
+    );
   } catch (error) {
     return apiErrorResponse(error, "Unable to load sales.");
   }
