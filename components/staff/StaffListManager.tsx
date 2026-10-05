@@ -321,7 +321,7 @@ export default function StaffListManager({
                         </Link>
                         <Button
                           type="button"
-                          variant={item.isActive ? "ghost" : "secondary"}
+                          variant={item.isActive ? "danger" : "primary"}
                           onClick={() => toggleActive(item)}
                           disabled={loadingId === item.id}
                         >

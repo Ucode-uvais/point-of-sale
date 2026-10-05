@@ -516,7 +516,9 @@ export default function ProductList({
                               </Link>
                               <Button
                                 type="button"
-                                variant="ghost"
+                                variant={
+                                  product.isActive ? "danger" : "primary"
+                                }
                                 className="text-xs uppercase tracking-[0.14em]"
                                 disabled={pendingProductId !== null}
                                 onClick={() => requestArchiveToggle(product)}
