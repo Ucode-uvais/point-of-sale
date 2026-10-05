@@ -342,9 +342,6 @@ function buildInitialCheckoutPersistenceState({
   restored.selectedCustomerId = draft.selectedCustomerId;
   restored.customerName = draft.customerName;
   restored.customerPhone = draft.customerPhone;
-  restored.loyaltyPointsToRedeem = draft.loyaltyPointsToRedeem;
-  restored.isCreditSale = draft.isCreditSale;
-  restored.creditDueDate = draft.creditDueDate || toDateInputValue();
   restored.notes = draft.notes;
   restored.payments = draft.payments.length
     ? draft.payments.map((payment) => ({
@@ -564,7 +561,6 @@ export default function CheckoutClient({
   const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState("0");
   const [isCreditSale, setIsCreditSale] = useState(false);
   const [creditDueDate, setCreditDueDate] = useState("");
-  const [showCreditDueDateHint, setShowCreditDueDateHint] = useState(false);
   const [notes, setNotes] = useState("");
   const [payments, setPayments] = useState<PaymentLine[]>([]);
   const [parkedSales, setParkedSales] =
@@ -742,20 +738,6 @@ export default function CheckoutClient({
     [isCreditSale, paymentInputs, total],
   );
 
-  const loyaltyPointsError = useMemo(() => {
-    const pointsToRedeem = Number(loyaltyPointsToRedeem || 0);
-
-    if (!selectedCustomer || pointsToRedeem <= 0) {
-      return "";
-    }
-
-    if (pointsToRedeem > selectedCustomer.loyaltyBalance) {
-      return `Only ${selectedCustomer.loyaltyBalance} loyalty points are available for ${getCustomerDisplayName(selectedCustomer)}.`;
-    }
-
-    return "";
-  }, [loyaltyPointsToRedeem, selectedCustomer]);
-
   const paymentError = useMemo(() => {
     if (isCreditSale) {
       if (!selectedCustomerId)
@@ -818,15 +800,6 @@ export default function CheckoutClient({
     const timeoutId = window.setTimeout(() => setStockLimitAlert(""), 3_500);
     return () => window.clearTimeout(timeoutId);
   }, [stockLimitAlert]);
-
-  useEffect(() => {
-    if (!showCreditDueDateHint) return;
-    const timeoutId = window.setTimeout(
-      () => setShowCreditDueDateHint(false),
-      2_500,
-    );
-    return () => window.clearTimeout(timeoutId);
-  }, [showCreditDueDateHint]);
 
   const pendingQueuedSales = queuedSales.filter(
     (sale) => sale.status === "PENDING",
@@ -1903,20 +1876,20 @@ export default function CheckoutClient({
     );
     setCustomerName(queuedSale.payload.customerName ?? "");
     setCustomerPhone(queuedSale.payload.customerPhone ?? "");
-    setLoyaltyPointsToRedeem(String(queuedSale.payload.loyaltyPointsToRedeem));
-    setIsCreditSale(queuedSale.payload.isCreditSale);
-    setCreditDueDate(queuedSale.payload.creditDueDate ?? toDateInputValue());
+    setLoyaltyPointsToRedeem("0");
+    setIsCreditSale(false);
+    setCreditDueDate(toDateInputValue());
     setNotes(queuedSale.payload.notes ?? "");
     setDiscountAmount(String(queuedSale.payload.discountAmount));
     setPayments(
-      queuedSale.payload.isCreditSale
-        ? buildInitialPaymentLines(defaultPaymentMethods, canAcceptCash)
-        : queuedSale.payload.payments.map((payment) => ({
+      queuedSale.payload.payments.length
+        ? queuedSale.payload.payments.map((payment) => ({
             id: crypto.randomUUID(),
             method: payment.method,
             amount: payment.amount.toFixed(2),
             referenceNumber: payment.referenceNumber ?? "",
-          })),
+          }))
+        : buildInitialPaymentLines(defaultPaymentMethods, canAcceptCash),
     );
     setQueuedSales((current) =>
       current.filter((entry) => entry.id !== queuedSale.id),
@@ -3109,62 +3082,6 @@ export default function CheckoutClient({
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
               />
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div>
-                <Input
-                  type="number"
-                  min={0}
-                  max={selectedCustomer?.loyaltyBalance ?? undefined}
-                  placeholder="Redeem loyalty points"
-                  value={loyaltyPointsToRedeem}
-                  onChange={(event) =>
-                    setLoyaltyPointsToRedeem(event.target.value)
-                  }
-                />
-                {loyaltyPointsError ? (
-                  <div className="mt-2 text-xs font-medium text-red-600">
-                    {loyaltyPointsError}
-                  </div>
-                ) : null}
-              </div>
-              <label className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={isCreditSale}
-                  onChange={(event) => {
-                    const checked = event.target.checked;
-                    setIsCreditSale(checked);
-                    setShowCreditDueDateHint(checked);
-                  }}
-                />
-                Post as customer credit sale
-              </label>
-              <div className="relative">
-                <Input
-                  type="date"
-                  aria-label="Credit sale due date"
-                  title={
-                    isCreditSale
-                      ? "Credit sale due date"
-                      : "Enable customer credit sale to choose a due date"
-                  }
-                  value={creditDueDate}
-                  onChange={(event) => setCreditDueDate(event.target.value)}
-                  disabled={!isCreditSale}
-                />
-                {isCreditSale && showCreditDueDateHint ? (
-                  <div
-                    role="status"
-                    aria-live="polite"
-                    className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-max max-w-[18rem] rounded-2xl border border-sky-200 bg-white px-3.5 py-2.5 text-xs font-medium leading-5 text-sky-800 shadow-[0_16px_38px_-22px_rgba(2,132,199,0.45)]"
-                  >
-                    <span className="absolute -top-1.5 right-6 h-3 w-3 rotate-45 border-l border-t border-sky-200 bg-white" />
-                    Set the payment due date for this credit sale here.
-                  </div>
-                ) : null}
-              </div>
             </div>
 
             {!isCreditSale ? (
