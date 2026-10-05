@@ -145,6 +145,16 @@ export async function POST(request: Request) {
       );
     }
 
+    if (parsed.data.isCreditSale || parsed.data.loyaltyPointsToRedeem > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Customer credit sales and loyalty redemption are temporarily unavailable.",
+        },
+        { status: 400 },
+      );
+    }
+
     const occurredAt =
       parseOptionalDateInput(parsed.data.occurredAt) ?? new Date();
     if (
