@@ -12,7 +12,6 @@ import {
   useSidebar,
 } from "@/components/ui/Sidebar";
 import { AnimatePresence, motion } from "framer-motion";
-import { TbCashRegister } from "react-icons/tb";
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -54,7 +53,6 @@ type SidebarProps = {
 type IconName =
   | "dashboard"
   | "checkout"
-  | "registers"
   | "sales"
   | "returns"
   | "stock-counts"
@@ -170,29 +168,6 @@ const sections: Array<{ title: string; links: NavLink[] }> = [
         minRole: "CASHIER",
       },
       {
-        label: "Registers",
-        description: "Shift management.",
-        icon: "registers",
-        minRole: "CASHIER",
-        subLinks: [
-          {
-            href: "/register/open",
-            label: "Open register",
-            minRole: "CASHIER",
-          },
-          {
-            href: "/register/close",
-            label: "Close register",
-            minRole: "CASHIER",
-          },
-          {
-            href: "/register/history",
-            label: "Register history",
-            minRole: "CASHIER",
-          },
-        ],
-      },
-      {
         href: "/inventory",
         label: "Inventory",
         description: "Track stock.",
@@ -286,7 +261,7 @@ const sections: Array<{ title: string; links: NavLink[] }> = [
         label: "Reports",
         description: "Owner reporting.",
         icon: "reports",
-        minRole: "ADMIN",
+        minRole: "MANAGER",
         requiredPermission: "VIEW_REPORTS",
       },
       {
@@ -311,8 +286,6 @@ function getLucideIcon(name: IconName, active: boolean) {
       return <LayoutDashboard className={common} />;
     case "checkout":
       return <ShoppingCart className={common} />;
-    case "registers":
-      return <TbCashRegister className={common} />;
     case "sales":
       return <Receipt className={common} />;
     case "returns":
