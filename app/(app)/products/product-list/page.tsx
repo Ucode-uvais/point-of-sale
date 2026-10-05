@@ -37,27 +37,6 @@ export default async function ProductListPage() {
             isActive: true,
           },
         },
-        baseUnitOfMeasure: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        uomConversions: {
-          select: {
-            id: true,
-            ratioToBase: true,
-            unitOfMeasure: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-          orderBy: {
-            ratioToBase: "asc",
-          },
-        },
         variants: {
           select: {
             id: true,
@@ -151,8 +130,6 @@ export default async function ProductListPage() {
           reorderPoint: product.reorderPoint,
           isActive: product.isActive,
           category: product.category,
-          baseUnitOfMeasure: product.baseUnitOfMeasure,
-          uomConversions: product.uomConversions,
           variants: product.variants,
           images: product.images,
           batches: product.batches.map((batch) => ({

@@ -19,18 +19,12 @@ import {
   buildVariantLabel,
   getMarginSummary,
 } from "@/lib/product-merchandising";
-import { summarizeConversions } from "@/lib/uom";
 
 type Category = {
   id: string;
   name: string;
   parentId: string | null;
   isActive: boolean;
-};
-
-type UnitOfMeasure = {
-  id: string;
-  name: string;
 };
 
 type ProductListVariant = {
@@ -56,12 +50,6 @@ type ProductListItem = {
   reorderPoint: number;
   isActive: boolean;
   category: Category | null;
-  baseUnitOfMeasure: UnitOfMeasure | null;
-  uomConversions: Array<{
-    id: string;
-    ratioToBase: number;
-    unitOfMeasure: UnitOfMeasure;
-  }>;
   variants: ProductListVariant[];
   images: Array<{
     id: string;
@@ -324,7 +312,6 @@ export default function ProductList({
                 <tr>
                   <th className="px-4 py-3.5">Product</th>
                   <th className="px-4 py-3.5">Category</th>
-                  <th className="px-4 py-3.5">Commercial data</th>
                   <th className="px-4 py-3.5">Variants</th>
                   <th className="px-4 py-3.5">Pricing</th>
                   <th className="px-4 py-3.5">Stock</th>
@@ -391,25 +378,6 @@ export default function ProductList({
                               : "Main category assignment"}
                           </div>
                         ) : null}
-                      </td>
-
-                      <td className="px-4 py-4 text-stone-600">
-                        <div>
-                          {product.sku || "N/A"} / {product.barcode || "N/A"}
-                        </div>
-                        <div className="mt-2 text-xs text-stone-500">
-                          Base:{" "}
-                          {product.baseUnitOfMeasure?.name ?? "Unit not set"}
-                        </div>
-                        <div className="mt-1 max-w-xs text-xs text-stone-500">
-                          {summarizeConversions(
-                            product.uomConversions.map((conversion) => ({
-                              unitName: conversion.unitOfMeasure.name,
-                              ratioToBase: conversion.ratioToBase,
-                            })),
-                            product.baseUnitOfMeasure?.name,
-                          )}
-                        </div>
                       </td>
 
                       <td className="px-4 py-4">
